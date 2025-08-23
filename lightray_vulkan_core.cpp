@@ -8,10 +8,18 @@ namespace lightray
 		{
 			glfwInit();
 			glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
-			glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
+			glfwWindowHint(GLFW_RESIZABLE, SUNDER_TRUE);
 
 			const u64 core_buffer_byte_count_written = sunder::init_buffer(core, sizeof(core_t), 0, sizeof(core_t));
 			
+			const std::filesystem::path project_root_path = get_project_root_path();
+			const std::filesystem::path shaders_path = project_root_path / "shaders";
+			const std::filesystem::path compiled_static_mesh_vertex_shader_path = shaders_path / "vert_shader.vert.spv";
+			const std::filesystem::path compiled_static_mesh_fragment_shader_path = shaders_path / "frag_shader.frag.spv";
+
+			const u32 compiled_static_mesh_vertex_shader_path_byte_code_size = get_shader_byte_code_size(compiled_static_mesh_vertex_shader_path);
+			const u32 compiled_static_mesh_fragment_shader_path_byte_code_size = get_shader_byte_code_size(compiled_static_mesh_fragment_shader_path);
+
 			core->window = glfwCreateWindow(window_width, window_height, window_title, nullptr, nullptr);
 
 			core->required_instance_extensions = glfwGetRequiredInstanceExtensions(&core->required_instance_extension_count);
@@ -49,7 +57,6 @@ namespace lightray
 			vkGetPhysicalDeviceProperties(core->gpus[LIGHTRAY_MAIN_GPU_INDEX], &core->gpu_properties);
 			vkGetPhysicalDeviceFeatures(core->gpus[LIGHTRAY_MAIN_GPU_INDEX], &core->gpu_features);
 			vkGetPhysicalDeviceMemoryProperties(core->gpus[LIGHTRAY_MAIN_GPU_INDEX], &core->gpu_vram_properties);
-
 			const VkResult surface_capabilities_retrieaval_result = vkGetPhysicalDeviceSurfaceCapabilitiesKHR(core->gpus[LIGHTRAY_MAIN_GPU_INDEX], core->surface, &core->surface_capabilities);
 
 			vkGetPhysicalDeviceQueueFamilyProperties(core->gpus[LIGHTRAY_MAIN_GPU_INDEX], &core->supported_queue_family_property_count, nullptr);
@@ -59,11 +66,26 @@ namespace lightray
 
 			get_supported_swapchain_image_count(core);
 
-			vkGetPhysicalDeviceSurfaceSupportKHR();
+			VkBool32 queue_family_supports_swapchain_presentation = VK_FALSE;
+			SUNDER_LOG("\n\n");
+
+			for (u32 i = 0; i < core->supported_queue_family_property_count; i++)
+			{
+				const VkResult queue_family_support_query_result = vkGetPhysicalDeviceSurfaceSupportKHR(core->gpus[LIGHTRAY_MAIN_GPU_INDEX], i, core->surface, &queue_family_supports_swapchain_presentation);
+
+				if (queue_family_support_query_result == VK_SUCCESS && queue_family_supports_swapchain_presentation == VK_TRUE)
+				{
+					core->swapchain_presentation_supported_queue_family_index_count++;
+					queue_family_supports_swapchain_presentation = VK_FALSE;
+					SUNDER_LOG(i);
+					SUNDER_LOG(" ");
+				}
+			}
 		}
 
 		void terminate_core(core_t* core)
 		{
+			vkDestroySurfaceKHR(core->instance, core->surface, nullptr);
 			vkDestroyInstance(core->instance, nullptr);
 
 			glfwDestroyWindow(core->window);
