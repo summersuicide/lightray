@@ -1,0 +1,5 @@
+@echo off
+
+glslangValidator -V lightray_static_mesh_vertex_shader.vert -o lightray_static_mesh_vertex_shader.vert.spv
+glslangValidator -V lightray_static_mesh_fragment_shader.frag -o lightray_static_mesh_fragment_shader.frag.spv
+pause
