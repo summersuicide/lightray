@@ -3,7 +3,6 @@
 #define VK_USE_PLATFORM_WIN32_KHR
 #define GLFW_INCLUDE_VULKAN
 #include "lightray_core.h"
-#include "lightray_entity_system.h"
 
 #define LIGHTRAY_MAX_SUPPORTED_GPU_COUNT 1U
 #define LIGHTRAY_MAIN_GPU_INDEX 0U
