@@ -54,16 +54,16 @@ bool lightray_is_key_pressed(GLFWwindow* window, i32 key, u8* key_tick_data)
 {
 	if (glfwGetKey(window, key) == GLFW_PRESS)
 	{
-		if ((*key_tick_data) & 1U << BITS_KEY_CAN_BE_PRESSED)
+		if ((*key_tick_data) & 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED)
 		{
-			(*key_tick_data) &= ~(1U << BITS_KEY_CAN_BE_PRESSED); // can_press = false;
+			(*key_tick_data) &= ~(1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED); // can_press = false;
 			return true;
 		}
 	}
 
 	else
 	{
-		(*key_tick_data) |= 1U << BITS_KEY_CAN_BE_PRESSED; // can_press = true;
+		(*key_tick_data) |= 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED; // can_press = true;
 	}
 
 	return false;
@@ -78,16 +78,16 @@ bool lightray_is_mouse_button_pressed(GLFWwindow* window, i32 mouse_button, u8* 
 {
 	if (glfwGetMouseButton(window, mouse_button) == GLFW_PRESS)
 	{
-		if ((*key_tick_data) & 1U << BITS_KEY_CAN_BE_PRESSED)
+		if ((*key_tick_data) & 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED)
 		{
-			(*key_tick_data) &= ~(1U << BITS_KEY_CAN_BE_PRESSED); // can_press = false;
+			(*key_tick_data) &= ~(1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED); // can_press = false;
 			return true;
 		}
 	}
 
 	else
 	{
-		(*key_tick_data) |= 1U << BITS_KEY_CAN_BE_PRESSED; // can_press = true;
+		(*key_tick_data) |= 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED; // can_press = true;
 	}
 
 	return false;
@@ -486,34 +486,16 @@ glm::mat4 lightray_assimp_to_glm_mat4(const aiMatrix4x4& mat)
 	);
 }
 
-void lightray_assimp_get_scene_node_count_helper(aiNode* node, u32* node_count)
+u32 lightray_assimp_get_mesh_index_count(const aiMesh* mesh)
 {
-	*node_count += node->mNumChildren;
+	u32 index_count_iter = 0;
 
-	for (u32 i = 0; i < node->mNumChildren; i++)
+	for (u32 j = 0; j < mesh->mNumFaces; j++)
 	{
-		lightray_assimp_get_scene_node_count_helper(node->mChildren[i], node_count);
+		index_count_iter += mesh->mFaces[j].mNumIndices;
 	}
-}
 
-u32 lightray_assimp_get_scene_node_count(aiScene* scene)
-{
-	u32 node_count = 0;
-	lightray_assimp_get_scene_node_count_helper(scene->mRootNode, &node_count);
-
-	return node_count;
-}
-
-void lightray_assimp_get_scene_node_names(aiNode* node, cstring_literal** name_buffer)
-{
-	u32 name_buffer_iter = 0;
-	name_buffer[name_buffer_iter] = node->mName.C_Str();
-	name_buffer_iter++;
-
-	for (u32 i = 0; i < node->mNumChildren; i++)
-	{
-		lightray_assimp_get_scene_node_names(node->mChildren[i], name_buffer);
-	}
+	return index_count_iter;
 }
 
 void lightray_compute_interpolated_bone_positions(aiNodeAnim* animation_channel_buffer, const glm::mat4& parent_transform, glm::mat4* bone_offset_matrix_buffer, f32 delta_time, f64 duration)
@@ -759,12 +741,12 @@ void lightray_allocate_scene(lightray_scene_t* scene, lightray_scene_allocation_
 
 	for (u32 i = 0; i < scene_allocation_data->total_entity_count; i++)
 	{
-		scene->entity_buffer[i].mesh_binding_index = UNDEFINED_VALUE_MESH_BINDING_INDEX;
-		scene->entity_buffer[i].instance_model_binding_index = UNDEFINED_VALUE_INSTANCE_MODEL_BINDING_INDEX;
-		scene->entity_buffer[i].entity_binding_index = UNDEFINED_VALUE_ENTITY_BINDING_INDEX;
-		scene->entity_buffer[i].converted_instance_model_buffer_index = UNDEFINED_VALUE_CONVERTED_INSTANCE_MODEL_BUFFER_INDEX;
-		scene->aabb_index_buffer[i] = UNDEFINED_VALUE_AABB_INDEX;
-		scene->collision_mesh_index_buffer[i] = UNDEFINED_VALUE_COLLISION_MESH_INDEX;
+		scene->entity_buffer[i].mesh_binding_index = LIGHTRAY_UNDEFINED_VALUE_MESH_BINDING_INDEX;
+		scene->entity_buffer[i].instance_model_binding_index = LIGHTRAY_UNDEFINED_VALUE_INSTANCE_MODEL_BINDING_INDEX;
+		scene->entity_buffer[i].entity_binding_index = LIGHTRAY_UNDEFINED_VALUE_ENTITY_BINDING_INDEX;
+		scene->entity_buffer[i].converted_instance_model_buffer_index = LIGHTRAY_UNDEFINED_VALUE_CONVERTED_INSTANCE_MODEL_BUFFER_INDEX;
+		scene->aabb_index_buffer[i] = LIGHTRAY_UNDEFINED_VALUE_AABB_INDEX;
+		scene->collision_mesh_index_buffer[i] = LIGHTRAY_UNDEFINED_VALUE_COLLISION_MESH_INDEX;
 	}
 
 	for (u32 i = 0; i < scene->total_mesh_count; i++)
@@ -815,28 +797,28 @@ void lightray_allocate_scene(lightray_scene_t* scene, lightray_scene_allocation_
 	}
 }
 
-lightray_entity_creation_result_t create_entity(lightray_scene_t* scene, lightray_entity_kind kind)
+lightray_entity_creation_result_t lightray_create_entity(lightray_scene_t* scene, lightray_entity_kind kind)
 {
 	lightray_entity_creation_result_t res;
-	res.result = RESULT_TOTAL_ENTITY_COUNT_IS_ZERO;
+	res.result = LIGHTRAY_RESULT_TOTAL_ENTITY_COUNT_IS_ZERO;
 	res.index = UINT32_MAX;
 	if (scene->total_entity_count == 0) { return res; }
 
-	res.result = RESULT_ENTITY_BUFFER_OVERFLOW;
+	res.result = LIGHTRAY_RESULT_ENTITY_BUFFER_OVERFLOW;
 	if (scene->entity_count == scene->total_entity_count) { return res; }
 
-	res.result = RESULT_SUCCESS;
+	res.result = LIGHTRAY_RESULT_SUCCESS;
 	res.index = scene->entity_count;
 
 	scene->entity_buffer[scene->entity_count].kind = kind;
 
-	if (kind == ENTITY_KIND_AABB)
+	if (kind == LIGHTRAY_ENTITY_KIND_AABB)
 	{
 		scene->aabb_index_buffer[scene->aabb_count] = scene->entity_count;
 		scene->aabb_count++;
 	}
 
-	if (kind == ENTITY_KIND_COLLISION_MESH)
+	if (kind == LIGHTRAY_ENTITY_KIND_COLLISION_MESH)
 	{
 		scene->collision_mesh_index_buffer[scene->collision_mesh_count] = scene->entity_count;
 		scene->collision_mesh_count++;
@@ -848,22 +830,22 @@ lightray_entity_creation_result_t create_entity(lightray_scene_t* scene, lightra
 	
 }
 
-lightray_result bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind)
+lightray_result lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind)
 {
-	if (mesh_index > scene->total_mesh_count - 1) { return RESULT_INVALID_MESH_INDEX; }
-	if (scene->cpu_side_instance_model_count_buffer[mesh_index] == 0) { return RESULT_INSTANCE_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
-	if (scene->instance_model_binding_count_buffer[mesh_index] >= scene->cpu_side_instance_model_count_buffer[mesh_index]) { return RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED; }
-	if (kind == RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == 0) { return RESULT_COLLISION_MESH_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
+	if (mesh_index > scene->total_mesh_count - 1) { return LIGHTRAY_RESULT_INVALID_MESH_INDEX; }
+	if (scene->cpu_side_instance_model_count_buffer[mesh_index] == 0) { return LIGHTRAY_RESULT_INSTANCE_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
+	if (scene->instance_model_binding_count_buffer[mesh_index] >= scene->cpu_side_instance_model_count_buffer[mesh_index]) { return LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED; }
+	if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == 0) { return LIGHTRAY_RESULT_COLLISION_MESH_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
 
 	scene->entity_buffer[entity_index].mesh_binding_index = (u32)mesh_index;
 	lightray_buffer_index_query_result_t suitable_index{};
 
-	if (kind == RENDER_TARGET_KIND_OPAQUE_MESH)
+	if (kind == LIGHTRAY_RENDER_TARGET_KIND_OPAQUE_MESH)
 	{
 		suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], 0, scene->cpu_side_instance_model_count_buffer[mesh_index], UINT32_MAX, true);
 	}
 
-	else if (kind == RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] < scene->cpu_side_instance_model_count_buffer[mesh_index])
+	else if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] < scene->cpu_side_instance_model_count_buffer[mesh_index])
 	{
 		u32 start = scene->cpu_side_instance_model_count_buffer[mesh_index] - scene->wireframe_mesh_count_buffer[mesh_index];
 		u32 elm_count = scene->wireframe_mesh_count_buffer[mesh_index] + start;
@@ -871,7 +853,7 @@ lightray_result bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_in
 		suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], start, elm_count, UINT32_MAX, true);
 	}
 
-	else if (kind == RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == scene->cpu_side_instance_model_count_buffer[mesh_index])
+	else if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == scene->cpu_side_instance_model_count_buffer[mesh_index])
 	{
 		suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], 0, scene->cpu_side_instance_model_count_buffer[mesh_index], UINT32_MAX, true);
 	}
@@ -886,7 +868,7 @@ lightray_result bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_in
 	scene->free_instance_model_offsets_per_mesh_buffers[mesh_index][suitable_index.return_index] = UINT32_MAX;
 	scene->mesh_binding_count++;
 
-	return RESULT_SUCCESS;
+	return LIGHTRAY_RESULT_SUCCESS;
 }
 
 void lightray_hide_entity(lightray_model_t* instance_model_buffer, lightray_model_t* hidden_instance_model_buffer, u32* instance_model_to_render_count_buffer, u32* instance_model_buffer_offsets_per_mesh, u32 entity_index, lightray_scene_t* scene)
@@ -1120,7 +1102,7 @@ u32 lightray_get_entity_bound_aabb_index_count(const lightray_scene_t* scene, u3
 	return aabb_index_count_iter;
 }
 
-void lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 collision_mesh_index, u32* aabb_index_buffer)
+void	lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 collision_mesh_index, u32* aabb_index_buffer)
 {
 	u32 aabb_index_buffer_iter = 0;
 
