@@ -1,8 +1,8 @@
 ﻿#include "lightray_core.h"
 
-void lightray_get_shader_byte_code(const std::filesystem::path& shader_path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit)
+void lightray_get_shader_byte_code(cstring_literal* path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit)
 {
-	std::ifstream file(shader_path, std::ios::ate | std::ios::binary);
+	std::ifstream file(path, std::ios::ate | std::ios::binary);
 	if (!file.is_open()) { return; }
 	u64 file_size = (u64)file.tellg();
 	if (file_size == 0 || file_size > byte_code_size_limit) { return; }
@@ -24,9 +24,9 @@ std::filesystem::path lightray_get_project_root_path()
 	return executable_path.parent_path().parent_path();
 }
 
-u64 lightray_get_shader_byte_code_size(const std::filesystem::path& shader_path)
+u64 lightray_get_shader_byte_code_size(cstring_literal* path)
 {
-	std::ifstream file(shader_path, std::ios::ate | std::ios::binary);
+	std::ifstream file(path, std::ios::ate | std::ios::binary);
 	if (!file.is_open()) { return UINT64_MAX; }
 	u64 file_size = (u64)file.tellg();
 	if (file.fail()) { return UINT64_MAX; }
@@ -252,11 +252,11 @@ void lightray_get_raw_vertex_positions(u32 index_buffer_offset, u32 index_count,
 	}
 }
 
-void lightray_get_projected_vertex_positions(const glm::vec3* raw_vertex_positions, glm::vec3* projected_vertex_positions, u64 vertex_count, const lightray_model_t& model)
+void lightray_compute_projected_vertex_positions(const glm::vec3* raw_vertex_positions, glm::vec3* projected_vertex_positions, u64 vertex_count, const lightray_model_t* model)
 {
 	for (u64 i = 0; i < vertex_count; i++)
 	{
-		projected_vertex_positions[i] = glm::vec3(model.model * glm::vec4(raw_vertex_positions[i], 1.0f));
+		projected_vertex_positions[i] = glm::vec3(model->model * glm::vec4(raw_vertex_positions[i], 1.0f));
 	}
 }
 
@@ -685,195 +685,169 @@ void lightray_set_target_fps(f32 desired_fps, f32* frame_duration_s, f32* core_f
 	*core_fps = desired_fps;
 }
 
-void lightray_allocate_scene(lightray_scene_t* scene, lightray_scene_allocation_data_t* scene_allocation_data)
+void lightray_suballocate_scene(lightray_scene_t* scene, const lightray_scene_suballocation_data_t* suballocation_data)
 {
-	scene->total_entity_count = scene_allocation_data->total_entity_count;
-	scene->total_mesh_count = scene_allocation_data->total_mesh_count;
-	scene->cpu_side_instance_model_count_buffer = scene_allocation_data->cpu_side_instance_model_count_buffer;
-	scene->instance_model_count = scene_allocation_data->instance_model_count;
-	scene->wireframe_mesh_count_buffer = scene_allocation_data->wireframe_mesh_count_buffer;
-	//scene->instance_count_buffer = scene_allocation_data->instance_count_buffer;
+	scene->total_entity_count = suballocation_data->total_entity_count;
+	scene->total_mesh_count = suballocation_data->total_mesh_count;
+	scene->total_instance_model_count = suballocation_data->total_instance_model_count;
 
-	sunder_arena_suballocation_result_t entity_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_entity_count * sizeof(lightray_entity_t), alignof(lightray_entity_t));
-	scene->entity_buffer = (lightray_entity_t*)entity_buffer_suballoc_result.data;
+	const sunder_arena_suballocation_result_t entity_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_entity_t), scene->total_entity_count), alignof(lightray_entity_t));
+	scene->entity_buffer = (lightray_entity_t*)entity_buffer_suballocation_result.data;
 
-	sunder_arena_suballocation_result_t position_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_entity_count * sizeof(glm::vec3), alignof(glm::vec3));
-	scene->position_buffer = (glm::vec3*)position_buffer_suballoc_result.data;
+	const sunder_arena_suballocation_result_t position_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(glm::vec3), scene->total_entity_count), alignof(glm::vec3));
+	scene->position_buffer = (glm::vec3*)position_buffer_suballocation_result.data;
 
-	sunder_arena_suballocation_result_t rotation_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_entity_count * sizeof(glm::vec3), alignof(glm::vec3));
-	scene->rotation_buffer = (glm::vec3*)rotation_buffer_suballoc_result.data;
+	const sunder_arena_suballocation_result_t rotation_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(glm::vec3), scene->total_entity_count), alignof(glm::vec3));
+	scene->rotation_buffer = (glm::vec3*)rotation_buffer_suballocation_result.data;
 
-	sunder_arena_suballocation_result_t scale_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_entity_count * sizeof(glm::vec3), alignof(glm::vec3));
-	scene->scale_buffer = (glm::vec3*)scale_buffer_suballoc_result.data;
+	const sunder_arena_suballocation_result_t scale_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(glm::vec3), scene->total_entity_count), alignof(glm::vec3));
+	scene->scale_buffer = (glm::vec3*)scale_buffer_suballocation_result.data;
 
-	sunder_arena_suballocation_result_t light_color_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_light_count * sizeof(glm::vec3), alignof(glm::vec3));
-	scene->light_color_buffer = (glm::vec3*)light_color_buffer_suballoc_result.data;
+	const sunder_arena_suballocation_result_t mesh_binding_offsets_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_mesh_binding_offsets_t), scene->total_mesh_count), alignof(lightray_mesh_binding_offsets_t));
+	scene->mesh_binding_offsets= (lightray_mesh_binding_offsets_t*)mesh_binding_offsets_suballocation_result.data;
 
-	sunder_arena_suballocation_result_t entity_transform_index_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_entity_count * sizeof(u32), alignof(u32));
-	scene->entity_transform_index_buffer = (u32*)entity_transform_index_buffer_suballoc_result.data;
+	const sunder_arena_suballocation_result_t mesh_binding_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_mesh_binding_t), scene->total_instance_model_count), alignof(lightray_mesh_binding_t));
+	scene->mesh_binding_buffer = (lightray_mesh_binding_t*)mesh_binding_buffer_suballocation_result.data;
 
-	sunder_arena_suballocation_result_t converted_instance_model_offset_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->instance_model_count * sizeof(u32), alignof(u32));
-	scene->converted_instance_model_offset_buffer = (u32*)converted_instance_model_offset_buffer_suballoc_result.data;
-
-	sunder_arena_suballocation_result_t cpu_side_instance_model_buffer_offsets_per_mesh_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_mesh_count * sizeof(u32), alignof(u32));
-	scene->cpu_side_instance_model_buffer_offsets_per_mesh = (u32*)cpu_side_instance_model_buffer_offsets_per_mesh_suballoc_result.data;
-
-	sunder_arena_suballocation_result_t instance_model_binding_count_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_mesh_count * sizeof(u32), alignof(u32));
-	scene->instance_model_binding_count_buffer = (u32*)instance_model_binding_count_buffer_suballoc_result.data;
-
-	sunder_arena_suballocation_result_t hidden_instance_model_index_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->instance_model_count * sizeof(u32), alignof(u32));
-	scene->hidden_instance_model_index_buffer = (u32*)hidden_instance_model_index_buffer_suballoc_result.data;
-
-	sunder_arena_suballocation_result_t free_instance_model_offsets_per_mesh_buffers_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_mesh_count * sizeof(u32*), alignof(u32*));
-	scene->free_instance_model_offsets_per_mesh_buffers = (u32**)free_instance_model_offsets_per_mesh_buffers_suballoc_result.data;
-
-	for (u32 i = 0; i < scene_allocation_data->total_mesh_count; i++)
-	{
-		sunder_arena_suballocation_result_t free_instance_model_offsets_per_mesh_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, (u32)scene->cpu_side_instance_model_count_buffer[i] * sizeof(u32), alignof(u32));
-		scene->free_instance_model_offsets_per_mesh_buffers[i] = (u32*)free_instance_model_offsets_per_mesh_buffer_suballoc_result.data;
-	}
-
-	sunder_arena_suballocation_result_t aabb_index_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_entity_count * sizeof(u32), alignof(u32));
-	scene->aabb_index_buffer = (u32*)aabb_index_buffer_suballoc_result.data;
-
-	sunder_arena_suballocation_result_t collision_mesh_index_buffer_suballoc_result = sunder_suballocate_from_arena(scene_allocation_data->arena, scene_allocation_data->total_entity_count * sizeof(u32), alignof(u32));
-	scene->collision_mesh_index_buffer = (u32*)collision_mesh_index_buffer_suballoc_result.data;
-
-	for (u32 i = 0; i < scene_allocation_data->total_entity_count; i++)
-	{
-		scene->entity_buffer[i].mesh_binding_index = LIGHTRAY_UNDEFINED_VALUE_MESH_BINDING_INDEX;
-		scene->entity_buffer[i].instance_model_binding_index = LIGHTRAY_UNDEFINED_VALUE_INSTANCE_MODEL_BINDING_INDEX;
-		scene->entity_buffer[i].entity_binding_index = LIGHTRAY_UNDEFINED_VALUE_ENTITY_BINDING_INDEX;
-		scene->entity_buffer[i].converted_instance_model_buffer_index = LIGHTRAY_UNDEFINED_VALUE_CONVERTED_INSTANCE_MODEL_BUFFER_INDEX;
-		scene->aabb_index_buffer[i] = LIGHTRAY_UNDEFINED_VALUE_AABB_INDEX;
-		scene->collision_mesh_index_buffer[i] = LIGHTRAY_UNDEFINED_VALUE_COLLISION_MESH_INDEX;
-	}
-
-	for (u32 i = 0; i < scene->total_mesh_count; i++)
-	{
-		scene->cpu_side_instance_model_buffer_offsets_per_mesh[i] = scene_allocation_data->cpu_side_instance_model_buffer_offsets_per_mesh[i];
-	}
-
-	for (u32 i = 0; i < scene_allocation_data->total_mesh_count; i++)
-	{
-		u32 offset = 0;
-
-		for (u32 j = 0; j < (u32)scene->cpu_side_instance_model_count_buffer[i]; j++)
-		{
-			scene->free_instance_model_offsets_per_mesh_buffers[i][j] = scene->cpu_side_instance_model_buffer_offsets_per_mesh[i] + offset;
-			offset++;
-		}
-
-		offset = 0;
-	}
-
-		/*
-		for (u32 i = 0; i < scene_allocation_data->total_mesh_count; i++)
-		{
-			SUNDER_LOG("\n");
-			for (u32 j = 0; j < (u32)scene->cpu_side_instance_model_count_buffer[i]; j++)
-			{
-				SUNDER_LOG(scene->free_instance_model_offsets_per_mesh_buffers[i][j]);
-				SUNDER_LOG(" ");
-			}
-		}
-		*/
+	const sunder_arena_suballocation_result_t mesh_binding_metadata_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_mesh_binding_metadata_t), scene->total_mesh_count), alignof(lightray_mesh_binding_metadata_t));
+	scene->mesh_binding_metadata_buffer = (lightray_mesh_binding_metadata_t*)mesh_binding_metadata_buffer_suballocation_result.data;
 
 	for (u32 i = 0; i < scene->total_entity_count; i++)
 	{
-		scene->scale_buffer[i].x = 1.0f;
-		scene->scale_buffer[i].y = 1.0f;
-		scene->scale_buffer[i].z = 1.0f;
+		scene->scale_buffer[i] = glm::vec3(1.0f);
 	}
 
-	for (u32 i = 0; i < scene->instance_model_count; i++)
+	for (u32 i = 0; i < scene->total_entity_count; i++)
 	{
-		scene->hidden_instance_model_index_buffer[i] = UINT32_MAX;
+		SUNDER_SET_BIT(scene->visibility_flags, i, 1ull);
 	}
+}
 
-	for (u32 i = 0; i < scene->instance_model_count; i++)
-	{
-		scene->visibility_flags |= 1 << i;
-	}
+u64 lightray_compute_scene_suballocation_size(const lightray_scene_suballocation_data_t* suballocation_data, u64 alignment)
+{
+	const u64 entity_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(lightray_entity_t), suballocation_data->total_entity_count, alignment);
+	const u64 transform_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(glm::vec3), suballocation_data->total_entity_count * 3, alignment);
+	const u64 mesh_binding_offsets_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(lightray_mesh_binding_offsets_t), suballocation_data->total_mesh_count, alignment);
+	const u64 mesh_binding_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(lightray_mesh_binding_t), suballocation_data->total_instance_model_count, alignment);
+	const u64 mesh_binding_metadata_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(lightray_mesh_binding_metadata_t), suballocation_data->total_mesh_count, alignment);
+
+	return  sunder_align64(entity_buffer_suballocation_size + transform_buffer_suballocation_size + mesh_binding_offsets_suballocation_size + mesh_binding_buffer_suballocation_size + mesh_binding_metadata_buffer_suballocation_size, alignment);
 }
 
 lightray_entity_creation_result_t lightray_create_entity(lightray_scene_t* scene, lightray_entity_kind kind)
 {
-	lightray_entity_creation_result_t res;
+	lightray_entity_creation_result_t res{};
 	res.result = LIGHTRAY_RESULT_TOTAL_ENTITY_COUNT_IS_ZERO;
 	res.index = UINT32_MAX;
+
 	if (scene->total_entity_count == 0) { return res; }
 
 	res.result = LIGHTRAY_RESULT_ENTITY_BUFFER_OVERFLOW;
-	if (scene->entity_count == scene->total_entity_count) { return res; }
+	if (scene->current_entity_count == scene->total_entity_count) { return res; }
 
 	res.result = LIGHTRAY_RESULT_SUCCESS;
-	res.index = scene->entity_count;
+	res.index = scene->current_entity_count;
 
-	scene->entity_buffer[scene->entity_count].kind = kind;
-
-	if (kind == LIGHTRAY_ENTITY_KIND_AABB)
-	{
-		scene->aabb_index_buffer[scene->aabb_count] = scene->entity_count;
-		scene->aabb_count++;
-	}
-
-	if (kind == LIGHTRAY_ENTITY_KIND_COLLISION_MESH)
-	{
-		scene->collision_mesh_index_buffer[scene->collision_mesh_count] = scene->entity_count;
-		scene->collision_mesh_count++;
-	}
-
-	scene->entity_count++;
+	scene->entity_buffer[scene->current_entity_count].kind = kind;
+	scene->current_entity_count++;
 
 	return res;
-	
 }
 
 lightray_result lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind)
 {
-	if (mesh_index > scene->total_mesh_count - 1) { return LIGHTRAY_RESULT_INVALID_MESH_INDEX; }
-	if (scene->cpu_side_instance_model_count_buffer[mesh_index] == 0) { return LIGHTRAY_RESULT_INSTANCE_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
-	if (scene->instance_model_binding_count_buffer[mesh_index] >= scene->cpu_side_instance_model_count_buffer[mesh_index]) { return LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED; }
-	if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == 0) { return LIGHTRAY_RESULT_COLLISION_MESH_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
-
-	scene->entity_buffer[entity_index].mesh_binding_index = (u32)mesh_index;
-	lightray_buffer_index_query_result_t suitable_index{};
-
-	if (kind == LIGHTRAY_RENDER_TARGET_KIND_OPAQUE_MESH)
+	if (entity_index > scene->total_entity_count + 1)
 	{
-		suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], 0, scene->cpu_side_instance_model_count_buffer[mesh_index], UINT32_MAX, true);
+		return LIGHTRAY_RESULT_FAILURE;
 	}
 
-	else if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] < scene->cpu_side_instance_model_count_buffer[mesh_index])
+	if (mesh_index > scene->total_mesh_count + 1)
 	{
-		u32 start = scene->cpu_side_instance_model_count_buffer[mesh_index] - scene->wireframe_mesh_count_buffer[mesh_index];
-		u32 elm_count = scene->wireframe_mesh_count_buffer[mesh_index] + start;
-
-		suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], start, elm_count, UINT32_MAX, true);
+		return LIGHTRAY_RESULT_FAILURE;
 	}
 
-	else if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == scene->cpu_side_instance_model_count_buffer[mesh_index])
+	if (scene->mesh_binding_count == scene->total_instance_model_count)
 	{
-		suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], 0, scene->cpu_side_instance_model_count_buffer[mesh_index], UINT32_MAX, true);
+		return LIGHTRAY_RESULT_FAILURE;
 	}
 
-	scene->converted_instance_model_offset_buffer[scene->mesh_binding_count] = suitable_index.value_at_index; //scene->suitiable_instance_model_offset_per_mesh_buffer[mesh_index];
-	scene->entity_buffer[entity_index].converted_instance_model_buffer_index = scene->mesh_binding_count; //scene->converted_instance_model_offset_buffer[scene->mesh_binding_count];
-	scene->entity_buffer[entity_index].instance_model_binding_index = scene->converted_instance_model_offset_buffer[scene->mesh_binding_count];
-	scene->instance_model_binding_count_buffer[mesh_index] += 1;
-	scene->entity_transform_index_buffer[scene->entity_transform_index_buffer_iter] = entity_index;
-	scene->entity_transform_index_buffer_iter += 1;
+	if (scene->mesh_binding_metadata_buffer[mesh_index].current_binding_count == scene->mesh_binding_metadata_buffer[mesh_index].instance_count)
+	{
+		return LIGHTRAY_RESULT_FAILURE;
+	}
 
-	scene->free_instance_model_offsets_per_mesh_buffers[mesh_index][suitable_index.return_index] = UINT32_MAX;
+	scene->entity_buffer[entity_index].mesh_binding_index = mesh_index;
+	scene->mesh_binding_buffer[scene->mesh_binding_count].transform_index = entity_index;
+	scene->mesh_binding_buffer[scene->mesh_binding_count].instance_model_index = scene->mesh_binding_offsets[mesh_index].current_opaque_instance_model_index;
+	scene->entity_buffer[entity_index].instance_model_binding_index = scene->mesh_binding_offsets[mesh_index].current_opaque_instance_model_index;
+
 	scene->mesh_binding_count++;
+	scene->mesh_binding_metadata_buffer[mesh_index].current_binding_count++;
+
+	if (scene->mesh_binding_offsets[mesh_index].current_opaque_instance_model_index != scene->mesh_binding_offsets[mesh_index].last_opaque_instance_model_index)
+	{
+		scene->mesh_binding_offsets[mesh_index].current_opaque_instance_model_index++;
+	}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	//if (mesh_index > scene->total_mesh_count - 1) { return LIGHTRAY_RESULT_INVALID_MESH_INDEX; }
+	//if (scene->cpu_side_instance_model_count_buffer[mesh_index] == 0) { return LIGHTRAY_RESULT_INSTANCE_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
+	//if (scene->instance_model_binding_count_buffer[mesh_index] >= scene->cpu_side_instance_model_count_buffer[mesh_index]) { return LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED; }
+	//if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == 0) { return LIGHTRAY_RESULT_COLLISION_MESH_COUNT_OF_SPECIFIED_MESH_IS_ZERO; }
+
+	//scene->entity_buffer[entity_index].mesh_binding_index = (u32)mesh_index;
+	//lightray_buffer_index_query_result_t suitable_index{};
+
+	//if (kind == LIGHTRAY_RENDER_TARGET_KIND_OPAQUE_MESH)
+	//{
+	//	suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], 0, scene->cpu_side_instance_model_count_buffer[mesh_index], UINT32_MAX, true);
+	//}
+
+	//else if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] < scene->cpu_side_instance_model_count_buffer[mesh_index])
+	//{
+	//	u32 start = scene->cpu_side_instance_model_count_buffer[mesh_index] - scene->wireframe_mesh_count_buffer[mesh_index];
+	//	u32 elm_count = scene->wireframe_mesh_count_buffer[mesh_index] + start;
+
+	//	suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], start, elm_count, UINT32_MAX, true);
+	//}
+
+	//else if (kind == LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH && scene->wireframe_mesh_count_buffer[mesh_index] == scene->cpu_side_instance_model_count_buffer[mesh_index])
+	//{
+	//	suitable_index = lightray_query_buffer_index(scene->free_instance_model_offsets_per_mesh_buffers[mesh_index], 0, scene->cpu_side_instance_model_count_buffer[mesh_index], UINT32_MAX, true);
+	//}
+
+	//scene->entity_tick_buffer[scene->mesh_binding_count].converted_instance_model_index = suitable_index.value_at_index; //scene->suitiable_instance_model_offset_per_mesh_buffer[mesh_index];
+	//scene->entity_buffer[entity_index].converted_instance_model_buffer_index = scene->mesh_binding_count; //scene->converted_instance_model_offset_buffer[scene->mesh_binding_count];
+	//scene->entity_buffer[entity_index].instance_model_binding_index = scene->entity_tick_buffer[scene->mesh_binding_count].converted_instance_model_index;
+	//scene->instance_model_binding_count_buffer[mesh_index] += 1;
+	//scene->entity_tick_buffer[scene->entity_transform_index_buffer_iter].transform_index = entity_index;
+	//scene->entity_transform_index_buffer_iter += 1;
+
+	//scene->free_instance_model_offsets_per_mesh_buffers[mesh_index][suitable_index.return_index] = UINT32_MAX;
+	//scene->mesh_binding_count++;
 
 	return LIGHTRAY_RESULT_SUCCESS;
 }
 
 void lightray_hide_entity(lightray_model_t* instance_model_buffer, lightray_model_t* hidden_instance_model_buffer, u32* instance_model_to_render_count_buffer, u32* instance_model_buffer_offsets_per_mesh, u32 entity_index, lightray_scene_t* scene)
 {
-	if (!(scene->visibility_flags & (1 << entity_index)))
+	/*if (!(scene->visibility_flags & (1 << entity_index)))
 	{
 		SUNDER_LOG("\nalready hidden, unable to hide");
 		return;
@@ -887,7 +861,7 @@ void lightray_hide_entity(lightray_model_t* instance_model_buffer, lightray_mode
 	if (instance_model_render_count == 0) { return; }
 
 	u32 free_hidden_instance_model_index = entity_index;
-	scene->hidden_instance_model_index_buffer[free_hidden_instance_model_index] = instance_model_index;
+	scene->entity_tick_buffer[free_hidden_instance_model_index].hidden_instance_model_index = instance_model_index;
 
 	scene->visibility_flags &= ~(1U << entity_index);
 
@@ -913,7 +887,7 @@ void lightray_hide_entity(lightray_model_t* instance_model_buffer, lightray_mode
 			}
 		}
 
-		scene->converted_instance_model_offset_buffer[scene->entity_buffer[swapped_entity_index].converted_instance_model_buffer_index] = instance_model_index;
+		scene->entity_tick_buffer[scene->entity_buffer[swapped_entity_index].converted_instance_model_buffer_index].converted_instance_model_index = instance_model_index;
 		scene->entity_buffer[entity_index].instance_model_binding_index = UINT32_MAX;
 		instance_model_to_render_count_buffer[mesh_binding_index] -= 1;
 	}
@@ -922,12 +896,12 @@ void lightray_hide_entity(lightray_model_t* instance_model_buffer, lightray_mode
 	{
 		scene->entity_buffer[entity_index].instance_model_binding_index = UINT32_MAX;
 		instance_model_to_render_count_buffer[mesh_binding_index] -= 1;
-	}
+	}*/
 }
 
 void lightray_unhide_entity(lightray_model_t* instance_model_buffer, lightray_model_t* hidden_instance_model_buffer, u32* instance_model_to_render_count_buffer, u32* instance_model_buffer_offsets_per_mesh, u32 entity_index, lightray_scene_t* scene)
 {
-	if ((scene->visibility_flags & (1 << entity_index)))
+	/*if ((scene->visibility_flags & (1 << entity_index)))
 	{
 		SUNDER_LOG("\nalready visible, unable to uhnide");
 		return;
@@ -941,7 +915,7 @@ void lightray_unhide_entity(lightray_model_t* instance_model_buffer, lightray_mo
 	instance_model_buffer[next_instance_model_index].model = hidden_instance_model_buffer[hidden_index].model;
 	scene->entity_buffer[entity_index].instance_model_binding_index = next_instance_model_index;
 	instance_model_to_render_count_buffer[mesh_binding_index] += 1;
-	scene->converted_instance_model_offset_buffer[scene->entity_buffer[entity_index].converted_instance_model_buffer_index] = next_instance_model_index;
+	scene->entity_tick_buffer[scene->entity_buffer[entity_index].converted_instance_model_buffer_index].converted_instance_model_index = next_instance_model_index;*/
 }
 
 void lightray_bind_entity(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index)
@@ -1054,7 +1028,7 @@ void lightray_move_entity(lightray_scene_t* scene, u32 self_aabb_index, u32 self
 
 u32 lightray_get_entity_bound_collision_mesh_index_count(const lightray_scene_t* scene, u32 entity_index)
 {
-	u32 collision_mesh_index_iter = 0;
+	/*u32 collision_mesh_index_iter = 0;
 
 	for (u32 i = 0; i < scene->collision_mesh_count; i++)
 	{
@@ -1066,12 +1040,14 @@ u32 lightray_get_entity_bound_collision_mesh_index_count(const lightray_scene_t*
 		}
 	}
 
-	return collision_mesh_index_iter;
+	return collision_mesh_index_iter;*/
+
+	return 0;
 }
 
 void lightray_get_entity_bound_collision_mesh_indices(const lightray_scene_t* scene, u32 entity_index, u32* collision_mesh_index_buffer)
 {
-	u32 collision_mesh_index_buffer_iter = 0;
+	/*u32 collision_mesh_index_buffer_iter = 0;
 
 	for (u32 i = 0; i < scene->collision_mesh_count; i++)
 	{
@@ -1082,12 +1058,12 @@ void lightray_get_entity_bound_collision_mesh_indices(const lightray_scene_t* sc
 			collision_mesh_index_buffer[collision_mesh_index_buffer_iter] = current_collision_mesh_index;
 			collision_mesh_index_buffer_iter++;
 		}
-	}
+	}*/
 }
 
 u32 lightray_get_entity_bound_aabb_index_count(const lightray_scene_t* scene, u32 collision_mesh_index)
 {
-	u32 aabb_index_count_iter = 0;
+	/*u32 aabb_index_count_iter = 0;
 
 	for (u32 i = 0; i < scene->aabb_count; i++)
 	{
@@ -1099,12 +1075,14 @@ u32 lightray_get_entity_bound_aabb_index_count(const lightray_scene_t* scene, u3
 		}
 	}
 
-	return aabb_index_count_iter;
+	return aabb_index_count_iter;*/
+
+	return 0;
 }
 
 void	lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 collision_mesh_index, u32* aabb_index_buffer)
 {
-	u32 aabb_index_buffer_iter = 0;
+	/*u32 aabb_index_buffer_iter = 0;
 
 	for (u32 i = 0; i < scene->aabb_count; i++)
 	{
@@ -1115,5 +1093,5 @@ void	lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 c
 			aabb_index_buffer[aabb_index_buffer_iter] = current_aabb_index;
 			aabb_index_buffer_iter++;
 		}
-	}
+	}*/
 }
