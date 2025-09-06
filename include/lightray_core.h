@@ -14,7 +14,6 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <fstream>
-#include <filesystem>
 #include <thread>
 #include "assimp/scene.h"
 #include "assimp/Importer.hpp"
@@ -177,26 +176,41 @@ struct u128_t
 	}
 };
 
+enum lightray_result : u32
+{
+	LIGHTRAY_RESULT_SUCCESS = 0u,
+	LIGHTRAY_RESULT_FAILURE = 1u,
+	LIGHTRAY_RESULT_INVALID_MESH_INDEX = 3u,
+	LIGHTRAY_RESULT_INVALID_ENTITY_INDEX = 4u,
+	LIGHTRAY_RESULT_ENTITY_BUFFER_OVERFLOW = 5u,
+	LIGHTRAY_RESULT_TOTAL_ENTITY_COUNT_IS_ZERO = 6u,
+	LIGHTRAY_RESULT_COLLISION_MESH_COUNT_OF_SPECIFIED_MESH_IS_ZERO = 7u,
+	LIGHTRAY_RESULT_INSTANCE_COUNT_OF_SPECIFIED_MESH_IS_ZERO = 8u,
+	LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED = 9u
+};
+
+
 enum lightray_render_target_kind : u32
 {
-	LIGHTRAY_RENDER_TARGET_KIND_OPAQUE_MESH = 0,
-	LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH
+	LIGHTRAY_RENDER_TARGET_KIND_UNDEFINED = 0u,
+	LIGHTRAY_RENDER_TARGET_KIND_OPAQUE_MESH = 1u,
+	LIGHTRAY_RENDER_TARGET_KIND_WIREFRAME_MESH = 2u 
 };
 
 enum lightray_bits : u64
 {
-	LIGHTRAY_BITS_KEY_CAN_BE_PRESSED = 0,
-	LIGHTRAY_BITS_USER_CHOSEN_PRESENT_MODE_BIT,
-	LIGHTRAY_BITS_PRESENT_MODE_FIFO_SUPPORTED_BIT = 1,
-	LIGHTRAY_BITS_PRESENT_MODE_MAILBOX_SUPPORTED_BIT = 2,
-	LIGHTRAY_BITS_PRESENT_MODE_IMMEDIATE_SUPPORTED_BIT = 3,
-	LIGHTRAY_BITS_IS_FPS_CAPPED = 4
+	LIGHTRAY_BITS_KEY_CAN_BE_PRESSED = 0ull,
+	LIGHTRAY_BITS_USER_CHOSEN_PRESENT_MODE_BIT = 1ull,
+	LIGHTRAY_BITS_PRESENT_MODE_FIFO_SUPPORTED_BIT = 2ull,
+	LIGHTRAY_BITS_PRESENT_MODE_MAILBOX_SUPPORTED_BIT = 3ull,
+	LIGHTRAY_BITS_PRESENT_MODE_IMMEDIATE_SUPPORTED_BIT = 4ull,
+	LIGHTRAY_BITS_IS_FPS_CAPPED = 5ull
 };
 
 enum lightray_spg_entity_kind : u32
 {
-	LIGHTRAY_SPG_ENTITY_KIND_STATIC = 0,
-	LIGHTRAY_SPG_ENTITY_KIND_DYNAMIC
+	LIGHTRAY_SPG_ENTITY_KIND_STATIC = 0u,
+	LIGHTRAY_SPG_ENTITY_KIND_DYNAMIC = 1u
 };
 
 // spatial partitioning grid
@@ -215,7 +229,13 @@ struct lightray_vertex_t
 
 struct lightray_model_t
 {
-	glm::mat4 model;
+	glm::mat4 model{};
+};
+
+struct alignas (16) lightray_render_instance_t
+{
+	lightray_model_t model{};
+	f32 layer_index = 0.0f;
 };
 
 // camera's view, projection matrices
@@ -227,22 +247,19 @@ struct lightray_cvp_t
 
 struct lightray_cursor_t
 {
-	glm::vec2 last_position;
-	glm::vec2 current_position;
+	glm::dvec2 last_position;
+	glm::dvec2 current_position;
 };
 
 struct lightray_camera_t
 {
-	//glm::vec2 last_cursor_position;
-	//glm::vec2 current_cursor_position;
-	u32 first_camera_tick_flags;
 	glm::vec3 position;
 	glm::vec2 rotation; // yaw - x , pitch - y 
 	f32 sensetivity;
-	f32 movement_speed;
 	f32 near_plane;
 	f32 far_plane;
 	f32 fov;
+	bool first_camera_tick;
 };
 
 struct lightray_ray_t
@@ -258,19 +275,6 @@ struct lightray_buffer_index_query_result_t
 	u32 return_index = UINT32_MAX;
 };
 
-enum lightray_result
-{
-	LIGHTRAY_RESULT_SUCCESS = 0,
-	LIGHTRAY_RESULT_INVALID_MESH_INDEX,
-	LIGHTRAY_RESULT_INVALID_ENTITY_INDEX,
-	LIGHTRAY_RESULT_UNKNOWN_FAILURE,
-	LIGHTRAY_RESULT_ENTITY_BUFFER_OVERFLOW,
-	LIGHTRAY_RESULT_TOTAL_ENTITY_COUNT_IS_ZERO,
-	LIGHTRAY_RESULT_COLLISION_MESH_COUNT_OF_SPECIFIED_MESH_IS_ZERO,
-	LIGHTRAY_RESULT_INSTANCE_COUNT_OF_SPECIFIED_MESH_IS_ZERO,
-	LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED
-};
-
 enum lightray_undefined_value : u32
 {
 	LIGHTRAY_UNDEFINED_VALUE_ENTITY_BINDING_INDEX = UINT16_MAX,
@@ -283,89 +287,86 @@ enum lightray_undefined_value : u32
 
 struct lightray_entity_creation_result_t
 {
-	lightray_result result = LIGHTRAY_RESULT_UNKNOWN_FAILURE;
+	lightray_result result = LIGHTRAY_RESULT_FAILURE;
 	u32 index = 0;
 };
 
 enum lightray_entity_kind : u32
 {
-	LIGHTRAY_ENTITY_KIND_UNDEFINED = 0,
-	LIGHTRAY_ENTITY_KIND_LIGHT,
-	LIGHTRAY_ENTITY_KIND_STATIC_MESH,
-	LIGHTRAY_ENTITY_KIND_SKELETAL_MESH,
-	LIGHTRAY_ENTITY_KIND_COLLISION_MESH,
-	LIGHTRAY_ENTITY_KIND_AABB,
+	LIGHTRAY_ENTITY_KIND_UNDEFINED = 0u,
+	LIGHTRAY_ENTITY_KIND_STATIC_MESH = 1u,
+	LIGHTRAY_ENTITY_KIND_SKELETAL_MESH = 2u,
+	LIGHTRAY_ENTITY_KIND_COLLISION_MESH = 3u,
+	LIGHTRAY_ENTITY_KIND_AABB = 4u
 };
 
-enum lightray_entity_bits
+enum lightray_entity_bits : u32
 {
-	LIGHTRAY_ENTITY_BITS_IS_COLLIDING = 0
+	LIGHTRAY_ENTITY_BITS_IS_COLLIDING = 0u
 };
 
 struct lightray_entity_t
 {
-	u128_t guid; // might store that in a separate array for cache efficiency
-	lightray_entity_kind kind; // might store that in a separate array for cache efficiency
+	u128_t guid;
+	lightray_entity_kind kind;
 	u32 mesh_binding_index;
 	u32 instance_model_binding_index;
 	u32 entity_binding_index;
-	u32 converted_instance_model_buffer_index;
-	u32 light_buffer_index;
-	u32 flags; // might store that in a separate array for cache efficiency
+	u32 flags;
 };
 
-struct lightray_scene_allocation_data_t
+struct lightray_scene_suballocation_data_t
 {
-	u32 instance_model_count = 0;
-
+	u32 total_instance_model_count = 0;
 	u32 total_entity_count = 0;
 	u32 total_mesh_count = 0;
-	u32 total_light_count = 0;
+
 	sunder_arena_t* arena = nullptr;
-	u32* cpu_side_instance_model_buffer_offsets_per_mesh = nullptr;
-	u32* cpu_side_instance_model_count_buffer = nullptr;
-	u32* wireframe_mesh_count_buffer = nullptr;
+};
+
+struct lightray_mesh_binding_t
+{
+	u32 transform_index = 0;
+	u32 instance_model_index = 0;
+};
+
+struct lightray_mesh_binding_offsets_t
+{
+	u32 current_opaque_instance_model_index = 0;
+	u32 last_opaque_instance_model_index = 0;
+	u32 current_wireframe_instance_model_index = 0;
+	u32 last_wireframe_instance_model_index = 0;
+};
+
+struct lightray_mesh_binding_metadata_t
+{
+	u32 instance_count = 0;
+	u32 current_binding_count = 0;
 };
 
 struct lightray_scene_t
 {
-	u32 mesh_binding_count = 0;
-	u32 instance_model_count = 0;
+	u32 total_instance_model_count = 0;
 	u32 total_mesh_count = 0;
-	u32 entity_count = 0;
+	u32 current_entity_count = 0;
 	u32 total_entity_count = 0;
-	u32 total_light_count = 0;
-	u32 light_count = 0;
 
 	lightray_entity_t* entity_buffer = nullptr;
 	glm::vec3* position_buffer = nullptr;
 	glm::vec3* rotation_buffer = nullptr;
 	glm::vec3* scale_buffer = nullptr;
-	glm::vec3* light_color_buffer = nullptr;
 
-	u32* entity_transform_index_buffer = 0;
-	u32 entity_transform_index_buffer_iter = 0;
-	u32* cpu_side_instance_model_count_buffer = nullptr;
-
-	u32* wireframe_mesh_count_buffer = nullptr;
-	u32** free_instance_model_offsets_per_mesh_buffers = nullptr;
-
-	u32* converted_instance_model_offset_buffer = nullptr;
-	u32* cpu_side_instance_model_buffer_offsets_per_mesh = nullptr;
-	u32* instance_model_binding_count_buffer = nullptr;
-	u32* hidden_instance_model_index_buffer = nullptr;
-	u32 visibility_flags = 0;
-
-	u32* aabb_index_buffer = nullptr;
-	u32* collision_mesh_index_buffer = nullptr;
-	u32 aabb_count = 0;
-	u32 collision_mesh_count = 0;
+	lightray_mesh_binding_offsets_t* mesh_binding_offsets = nullptr; // per mesh
+	lightray_mesh_binding_t* mesh_binding_buffer = nullptr; // per instance model
+	lightray_mesh_binding_metadata_t* mesh_binding_metadata_buffer = nullptr;
+	u32 mesh_binding_count = 0;
+	u64 visibility_flags = 0; // 1 bit per instance model
 };
 
-void														lightray_get_shader_byte_code(const std::filesystem::path& shader_path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit);
+void														lightray_get_shader_byte_code(cstring_literal* path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit);
 
 															// returns UINT64_MAX on failure
-u64														lightray_get_shader_byte_code_size(const std::filesystem::path& shader_path);
+u64														lightray_get_shader_byte_code_size(cstring_literal* path);
 std::filesystem::path								lightray_get_project_root_path();
 void														lightray_hide_cursor(GLFWwindow* window);
 void														lightray_unhide_cursor(GLFWwindow* window);
@@ -383,7 +384,9 @@ bool														lightray_ray_triangle_intersect(const lightray_ray_t* ray, con
 lightray_buffer_index_query_result_t	lightray_query_buffer_index(const u32* buffer, u32 starting_index, u32 ending_index, u32 val_at_index, bool reverse_logic);
 bool														lightray_aabbs_intersect(const glm::vec3& position_a, const glm::vec3& scale_a, const glm::vec3& position_b, const glm::vec3& scale_b);
 void														lightray_get_raw_vertex_positions(u32 index_buffer_offset, u32 index_count, glm::vec3* buffer, const lightray_vertex_t* vertex_buffer, const u32* index_buffer);
-void														lightray_get_projected_vertex_positions(const glm::vec3* raw_vertex_positions, glm::vec3* projected_vertex_positions, u64 vertex_count, const lightray_model_t& model);
+				
+															// takes raw vertex positions and computes their positions in model space (expensive, use one of vectorized version) 
+void														lightray_compute_projected_vertex_positions(const glm::vec3* raw_vertex_positions, glm::vec3* projected_vertex_positions, u64 vertex_count, const lightray_model_t* model);
 
 glm::vec3												lightray_gjk_find_furthest_point(const glm::vec3* tri, u64 vertex_count, const glm::vec3& direction);
 glm::vec3												lightray_gjk_support(const glm::vec3* vertex_positions1, u64 vertex_count1, const glm::vec3* vertex_positions2, u64 vertex_count2, const glm::vec3& direction);
@@ -406,16 +409,18 @@ void														lightray_disable_raw_mouse_input(GLFWwindow* window);
 void														lightray_set_target_fps(f32 desired_fps, f32* frame_duration_s, f32* core_fps);
 
 															// dont need to deallocate anything, because this function just suballocates from specified arena
-void														lightray_allocate_scene(lightray_scene_t* scene, lightray_scene_allocation_data_t* scene_allocation_data);
+void														lightray_suballocate_scene(lightray_scene_t* scene, const lightray_scene_suballocation_data_t* suballocation_data);
+u64														lightray_compute_scene_suballocation_size(const lightray_scene_suballocation_data_t* suballocation_data, u64 alignment);
 lightray_entity_creation_result_t			lightray_create_entity(lightray_scene_t* scene, lightray_entity_kind kind);
 lightray_result										lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind);
 void														lightray_hide_entity(lightray_model_t* instance_model_buffer, lightray_model_t* hidden_instance_model_buffer, u32* instance_model_to_render_count_buffer, u32* instance_model_buffer_offsets_per_mesh, u32 entity_index, lightray_scene_t* scene);
 void														lightray_unhide_entity(lightray_model_t* instance_model_buffer, lightray_model_t* hidden_instance_model_buffer, u32* instance_model_to_render_count_buffer, u32* instance_model_buffer_offsets_per_mesh, u32 entity_index, lightray_scene_t* scene);
-void														lightray_bind_entity(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index);
+void														lightray_bind_entity(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index); // change it so that until mesh's instance is bound to any entity, it wouldn't be rendered
 void														lightray_move_entity(lightray_scene_t* scene, u32 self_aabb_index, u32 self_collision_mesh_index, const u32* index_buffer_offsets, const u32* index_count_buffer, const u32* index_buffer, const lightray_vertex_t* vertex_buffer, lightray_model_t* instance_model_buffer, glm::vec3* self_raw_vertex_positions, glm::vec3* self_projected_vertex_positions, glm::vec3* other_raw_vertex_positions, glm::vec3* other_projected_vertex_positions, u32 entity_index, const glm::vec3& direction);
 u32														lightray_get_entity_bound_collision_mesh_index_count(const lightray_scene_t* scene, u32 entity_index);
 void														lightray_get_entity_bound_collision_mesh_indices(const lightray_scene_t* scene, u32 entity_index, u32* collision_mesh_index_buffer);
 u32														lightray_get_entity_bound_aabb_index_count(const lightray_scene_t* scene, u32 collision_mesh_index);
 void														lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 collision_mesh_index, u32* aabb_index_buffer);
-void														bind_collision_layer();
-void														unbind_collision_layer();
+void														lightray_bind_collision_layer();
+void														lightray_unbind_collision_layer();
+void														lightray_bind_texture();
