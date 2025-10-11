@@ -1,27 +1,18 @@
 ﻿#include "lightray_core.h"
 
-void lightray_get_shader_byte_code(cstring_literal* path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit)
+lightray_result lightray_load_shader_byte_code(cstring_literal* path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit)
 {
 	std::ifstream file(path, std::ios::ate | std::ios::binary);
-	if (!file.is_open()) { return; }
+	if (!file.is_open()) { return LIGHTRAY_RESULT_FAILED_TO_OPEN_COMPILED_SHADER_BYTE_CODE; }
 	u64 file_size = (u64)file.tellg();
-	if (file_size == 0 || file_size > byte_code_size_limit) { return; }
+	if (file_size == 0 || file_size > byte_code_size_limit) { return LIGHTRAY_RESULT_COMPILED_SHADER_BYTE_CODE_SIZE_LIMIT_HAS_BEEN_EXCEEDED; }
 	(*buffer_size_in_bytes) = file_size;
 	file.seekg(0);
 	file.read(buffer, file_size);
-	if (file.fail()) { return; }
+	if (file.fail()) { return LIGHTRAY_RESULT_FAILED_TO_LOAD_COMPILED_SHADER_BYTE_CODE; }
 	file.close();
-}
 
-std::filesystem::path lightray_get_project_root_path()
-{
-	char buffer[1024];
-	GetModuleFileNameA(NULL, buffer, 1024);
-	std::filesystem::path executable_path = std::filesystem::path(buffer).parent_path();
-	SUNDER_LOG("\nEXE DIRECTORY");
-	SUNDER_LOG(executable_path);
-
-	return executable_path.parent_path().parent_path();
+	return LIGHTRAY_RESULT_SUCCESS;
 }
 
 u64 lightray_get_shader_byte_code_size(cstring_literal* path)
@@ -50,44 +41,56 @@ bool lightray_should_tick(GLFWwindow* window)
 	return !glfwWindowShouldClose(window);
 }
 
-bool lightray_is_key_pressed(GLFWwindow* window, i32 key, u8* key_tick_data)
+bool lightray_key_pressed(GLFWwindow* window, lightray_key_binding key, u8* key_tick_data)
 {
-	if (glfwGetKey(window, key) == GLFW_PRESS)
+	if (LIGHTRAY_KEY_BOUND(key))
 	{
-		if ((*key_tick_data) & 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED)
+		if (glfwGetKey(window, SUNDER_CAST2(i32)key) == GLFW_PRESS)
 		{
-			(*key_tick_data) &= ~(1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED); // can_press = false;
-			return true;
+			if ((*key_tick_data) & 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED_BIT)
+			{
+				(*key_tick_data) &= ~(1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED_BIT); // can_press = false;
+				return true;
+			}
 		}
-	}
 
-	else
-	{
-		(*key_tick_data) |= 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED; // can_press = true;
+		else
+		{
+			(*key_tick_data) |= 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED_BIT; // can_press = true;
+		}
 	}
 
 	return false;
 }
 
-bool lightray_is_key_down(GLFWwindow* window, i32 key)
+bool lightray_key_down(GLFWwindow* window, lightray_key_binding key)
 {
-	return glfwGetKey(window, key) == GLFW_PRESS;
-}
-
-bool lightray_is_mouse_button_pressed(GLFWwindow* window, i32 mouse_button, u8* key_tick_data)
-{
-	if (glfwGetMouseButton(window, mouse_button) == GLFW_PRESS)
+	if (LIGHTRAY_KEY_BOUND(key))
 	{
-		if ((*key_tick_data) & 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED)
-		{
-			(*key_tick_data) &= ~(1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED); // can_press = false;
-			return true;
-		}
+		return glfwGetKey(window, SUNDER_CAST2(i32)key) == GLFW_PRESS;
 	}
 
-	else
+	return false;
+
+}
+
+bool lightray_mouse_button_pressed(GLFWwindow* window, lightray_key_binding mouse_button, u8* key_tick_data)
+{
+	if (LIGHTRAY_KEY_BOUND(mouse_button))
 	{
-		(*key_tick_data) |= 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED; // can_press = true;
+		if (glfwGetMouseButton(window, SUNDER_CAST2(i32)mouse_button) == GLFW_PRESS)
+		{
+			if ((*key_tick_data) & 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED_BIT)
+			{
+				(*key_tick_data) &= ~(1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED_BIT); // can_press = false;
+				return true;
+			}
+		}
+
+		else
+		{
+			(*key_tick_data) |= 1U << LIGHTRAY_BITS_KEY_CAN_BE_PRESSED_BIT; // can_press = true;
+		}
 	}
 
 	return false;
@@ -188,6 +191,7 @@ bool lightray_ray_triangle_intersect(const lightray_ray_t* ray, const glm::vec3*
 	return true;
 }
 
+/*
 lightray_buffer_index_query_result_t lightray_query_buffer_index(const u32* buffer, u32 starting_index, u32 ending_index, u32 val_at_index, bool reverse_logic)
 {
 	lightray_buffer_index_query_result_t res;
@@ -226,6 +230,7 @@ lightray_buffer_index_query_result_t lightray_query_buffer_index(const u32* buff
 
 	return res;
 }
+*/
 
 bool lightray_aabbs_intersect(const glm::vec3& position_a, const glm::vec3& scale_a, const glm::vec3& position_b, const glm::vec3& scale_b)
 {
@@ -479,11 +484,23 @@ bool lightray_gjk_intersect(const glm::vec3* vertex_positions1, u64 vertex_count
 glm::mat4 lightray_assimp_to_glm_mat4(const aiMatrix4x4& mat)
 {
 	return glm::mat4(
-		mat.a1, mat.b1, mat.c1, mat.d1,
-		mat.a2, mat.b2, mat.c2, mat.d2,
-		mat.a3, mat.b3, mat.c3, mat.d3,
-		mat.a4, mat.b4, mat.c4, mat.d4
+	mat.a1, mat.b1, mat.c1, mat.d1,
+	mat.a2, mat.b2, mat.c2, mat.d2,
+	mat.a3, mat.b3, mat.c3, mat.d3,
+	mat.a4, mat.b4, mat.c4, mat.d4
 	);
+
+	//glm::mat4 m{};
+
+	//for (u32 y = 0; y < 4; y++)
+	//{
+	//	for (u32 x = 0; x < 4; x++)
+	//	{
+	//		m[x][y] = mat[y][x];
+	//	}
+	//}
+
+	//return m;
 }
 
 u32 lightray_assimp_get_mesh_index_count(const aiMesh* mesh)
@@ -498,6 +515,12 @@ u32 lightray_assimp_get_mesh_index_count(const aiMesh* mesh)
 	return index_count_iter;
 }
 
+u32 lightray_assimp_get_mesh_index_count_unsafe(const aiMesh* mesh)
+{
+	return mesh->mNumFaces * 3;
+}
+
+/*
 void lightray_compute_interpolated_bone_positions(aiNodeAnim* animation_channel_buffer, const glm::mat4& parent_transform, glm::mat4* bone_offset_matrix_buffer, f32 delta_time, f64 duration)
 {
 	float ticksPerSecond = 30.0f;
@@ -644,6 +667,7 @@ void lightray_compute_interpolated_bone_positions(aiNodeAnim* animation_channel_
 		
 			
 	}
+	*/
 
 u64 lightray_generate_guid64()
 {
@@ -756,24 +780,24 @@ lightray_entity_creation_result_t lightray_create_entity(lightray_scene_t* scene
 
 lightray_result lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind)
 {
-	if (entity_index > scene->total_entity_count + 1)
+	if (entity_index > scene->total_entity_count - 1)
 	{
-		return LIGHTRAY_RESULT_FAILURE;
+		return LIGHTRAY_RESULT_INVALID_ENTITY_INDEX;
 	}
 
-	if (mesh_index > scene->total_mesh_count + 1)
+	if (mesh_index > scene->total_mesh_count - 1)
 	{
-		return LIGHTRAY_RESULT_FAILURE;
+		return LIGHTRAY_RESULT_INVALID_MESH_INDEX;
 	}
 
 	if (scene->mesh_binding_count == scene->total_instance_model_count)
 	{
-		return LIGHTRAY_RESULT_FAILURE;
+		return LIGHTRAY_RESULT_MESH_BINDING_OVERFLOW;
 	}
 
 	if (scene->mesh_binding_metadata_buffer[mesh_index].current_binding_count == scene->mesh_binding_metadata_buffer[mesh_index].instance_count)
 	{
-		return LIGHTRAY_RESULT_FAILURE;
+		return LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED;
 	}
 
 	scene->entity_buffer[entity_index].mesh_binding_index = mesh_index;
@@ -1094,4 +1118,342 @@ void	lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 c
 			aabb_index_buffer_iter++;
 		}
 	}*/
+}
+
+u8 lightray_pack_f32_to_u8(f32 f)
+{
+	const f32 clamped = sunder_clamp_f32(0.0f, 1.0f, f);
+	const u8 scaled = (u8)(clamped * 255.0f + 0.5f);
+
+	return sunder_clamp_u8(0, 255, scaled);
+}
+
+f32 lightray_unpack_u8_to_f32(u8 v)
+{
+	return sunder_clamp_f32(0.0f, 1.0f, (f32)v / 255);
+}
+
+glm::vec3 lightray_assimp_to_glm_vec3(const aiVector3D& vec)
+{
+	return glm::vec3(vec.x, vec.y, vec.z);
+}
+
+glm::quat lightray_assimp_to_glm_quat(const aiQuaternion& quat)
+{
+	return glm::quat(quat.w, quat.x, quat.y, quat.z);
+}
+
+void lightray_log_animation_playback_frame_time(f32 current_frame_time, f32 animation_duration)
+{
+	SUNDER_LOG(current_frame_time);
+	SUNDER_LOG("/");
+	SUNDER_LOG(animation_duration);
+}
+
+u32 lightray_get_suitable_scale_key_index(const lightray_animation_key_vec3_t* scale_key_buffer, u32 scale_key_buffer_offset, u32 scale_key_count, f32 animation_in_ticks)
+{
+	for (u32 i = 0; i < scale_key_count - 1; i++)
+	{
+		const u32 scale_key_buffer_index = scale_key_buffer_offset + i;
+		const f32 t = scale_key_buffer[scale_key_buffer_index + 1].time;
+
+		if (animation_in_ticks < t)
+		{
+			return scale_key_buffer_index;
+		}
+	}
+
+	return scale_key_buffer_offset;
+}
+
+u32 lightray_get_suitable_rotation_key_index(const lightray_animation_key_quat_t* rotation_key_buffer, u32 rotation_key_buffer_offset, u32 rotation_key_count, f32 animation_in_ticks)
+{
+	for (u32 i = 0; i < rotation_key_count - 1; i++)
+	{
+		const u32 rotation_key_buffer_index = rotation_key_buffer_offset + i;
+		const f32 t = rotation_key_buffer[rotation_key_buffer_index + 1].time;
+
+		if (animation_in_ticks < t)
+		{
+			return rotation_key_buffer_index;
+		}
+	}
+
+	return rotation_key_buffer_offset;
+}
+
+u32 lightray_get_suitable_position_key_index(const lightray_animation_key_vec3_t* position_key_buffer, u32 position_key_buffer_offset, u32 position_key_count, f32 animation_in_ticks)
+{
+	for (u32 i = 0; i < position_key_count - 1; i++)
+	{
+		const u32 position_key_buffer_index = position_key_buffer_offset + i;
+		const f32 t = position_key_buffer[position_key_buffer_index + 1].time;
+
+		if (animation_in_ticks < t)
+		{
+			return position_key_buffer_index;
+		}
+	}
+
+	return position_key_buffer_offset;
+}
+
+glm::vec3 lightray_compute_interpolated_animation_channel_position_key(const lightray_animation_channel_t* channel, const lightray_animation_key_vec3_t* position_key_buffer, f32 animation_in_ticks)
+{
+	const u32 position_key_buffer_offset = channel->position_key_buffer_offset;
+	const u32 position_key_count = channel->position_key_count;
+
+	if (position_key_count == 1)
+	{
+		return position_key_buffer[position_key_buffer_offset].vec;
+	}
+
+	const u32 key_position_index = lightray_get_suitable_position_key_index(position_key_buffer, position_key_buffer_offset, position_key_count, animation_in_ticks);
+	const u32 next_key_position_index = key_position_index + 1;
+
+	const f32 t1 = position_key_buffer[key_position_index].time;
+	const f32 t2 = position_key_buffer[next_key_position_index].time;
+	const f32 delta_time = t2 - t1;
+	const f32 factor = (animation_in_ticks - t1) / delta_time;
+
+	const glm::vec3 start = position_key_buffer[key_position_index].vec;
+	const glm::vec3 end = position_key_buffer[next_key_position_index].vec;
+	const glm::vec3 delta_vec = end - start;
+	
+	return start + factor * delta_vec;
+}
+
+glm::quat lightray_compute_interpolated_animation_channel_rotation_key(const lightray_animation_channel_t* channel, const lightray_animation_key_quat_t* rotation_key_buffer, f32 animation_in_ticks)
+{
+	const u32 rotation_key_buffer_offset = channel->rotation_key_buffer_offset;
+	const u32 rotation_key_count = channel->rotation_key_count;
+	
+	if (rotation_key_count == 1)
+	{
+		return rotation_key_buffer[rotation_key_buffer_offset].quat;
+	}
+
+	const u32 rotation_key_index = lightray_get_suitable_rotation_key_index(rotation_key_buffer, rotation_key_buffer_offset, rotation_key_count, animation_in_ticks);
+	const u32 next_rotation_key_index = rotation_key_index + 1;
+
+	const f32 t1 = rotation_key_buffer[rotation_key_index].time;
+	const f32 t2 = rotation_key_buffer[next_rotation_key_index].time;
+	const f32 delta_time = t2 - t1;
+	const f32 factor = (animation_in_ticks - t1) / delta_time;
+
+	const glm::quat start = rotation_key_buffer[rotation_key_index].quat;
+	const glm::quat end = rotation_key_buffer[next_rotation_key_index].quat;
+
+	return glm::normalize(glm::slerp(start, end, factor));
+}
+
+glm::vec3 lightray_compute_interpolated_animation_channel_scale_key(const lightray_animation_channel_t* channel, const lightray_animation_key_vec3_t* scale_key_buffer, f32 animation_in_ticks)
+{
+	const u32 scale_key_buffer_offset = channel->scale_key_buffer_offset;
+	const u32 scale_key_count = channel->scale_key_count;
+
+	if (scale_key_count == 1)
+	{
+		return scale_key_buffer[scale_key_buffer_offset].vec;
+	}
+
+	const u32 scale_key_index = lightray_get_suitable_scale_key_index(scale_key_buffer, scale_key_buffer_offset, scale_key_count, animation_in_ticks);
+	const u32 next_scale_key_index = scale_key_index + 1;
+
+	const f32 t1 = scale_key_buffer[scale_key_index].time;
+	const f32 t2 = scale_key_buffer[next_scale_key_index].time;
+	const f32 delta_time = t2 - t1;
+	const f32 factor = (animation_in_ticks - t1) / delta_time;
+
+	const glm::vec3 start = scale_key_buffer[scale_key_index].vec;
+	const glm::vec3 end = scale_key_buffer[next_scale_key_index].vec;
+	const glm::vec3 delta_vec = end - start;
+
+	return start + factor * delta_vec;
+}
+
+void lightray_compute_interpolated_skeleton_transform(lightray_animation_core_t* animation_core, u32 animation_index, u32 skeleton_index, u32 instance_index)
+{
+	const u32 current_node_count = animation_core->skeleton_buffer[skeleton_index].node_count;
+	const u32 current_node_buffer_offset = animation_core->skeleton_buffer[skeleton_index].node_buffer_offset;
+	const u32 current_skeletal_mesh_bone_buffer_offset = animation_core->skeleton_buffer[skeleton_index].bone_buffer_offset;
+	const u32 current_animation_channel_buffer_offset = animation_core->animation_buffer[animation_index].channel_buffer_offset;
+	const u32 final_bone_matrices_buffer_offset_with_respect_to_instance = lightray_compute_computed_bone_transform_matrix_buffer_offset_with_respect_to_instance(instance_index, animation_core->skeleton_buffer[skeleton_index].bone_count, animation_core->skeleton_buffer[skeleton_index].computed_bone_transform_matrix_buffer_offset);
+
+	for (u32 i = 1; i < current_node_count; i++)
+	{
+		const u32 current_node_index = current_node_buffer_offset + i;
+		const u32 current_parent_index = current_node_buffer_offset + animation_core->node_buffer[current_node_index].parent_index;
+		const u32 current_bone_buffer_index = animation_core->node_buffer[current_node_index].bone_buffer_index;
+		const u32 current_animation_channel_buffer_index = animation_core->node_buffer[current_node_index].animation_channel_buffer_index;
+
+		glm::mat4 local_transform_matrix = animation_core->node_buffer[current_node_index].local_transform_matrix;
+
+		if (current_animation_channel_buffer_index != LIGHTRAY_INVALID_NODE_ANIMATION_CHANNEL_BUFFER_INDEX)
+		{
+			const u32 current_animation_channel_index = current_animation_channel_buffer_offset + current_animation_channel_buffer_index;
+			const lightray_animation_channel_t* current_animation_channel = &animation_core->animation_channel_buffer[current_animation_channel_index];
+
+			const glm::vec3 scale_key = lightray_compute_interpolated_animation_channel_scale_key(current_animation_channel, animation_core->animation_scale_key_buffer, animation_core->playback_command_buffer[instance_index].ticks);
+			const glm::quat rotation_key = lightray_compute_interpolated_animation_channel_rotation_key(current_animation_channel, animation_core->animation_rotation_key_buffer, animation_core->playback_command_buffer[instance_index].ticks);
+			const glm::vec3 position_key = lightray_compute_interpolated_animation_channel_position_key(current_animation_channel, animation_core->animation_position_key_buffer, animation_core->playback_command_buffer[instance_index].ticks);
+
+			const glm::mat4 identity = glm::mat4(1.0f);
+			const glm::mat4 scale_matrix = glm::scale(identity, scale_key);
+			const glm::mat4 rotation_matrix = glm::toMat4(rotation_key);
+			const glm::mat4 translation_matrix = glm::translate(identity, position_key);
+
+			local_transform_matrix = translation_matrix * rotation_matrix * scale_matrix;
+		}
+
+		animation_core->node_buffer[current_node_index].global_transform_matrix = animation_core->node_buffer[current_parent_index].global_transform_matrix * local_transform_matrix;
+
+		if (current_bone_buffer_index != LIGHTRAY_INVALID_NODE_BONE_BUFFER_INDEX)
+		{
+			animation_core->computed_bone_matrix_buffer[final_bone_matrices_buffer_offset_with_respect_to_instance + current_bone_buffer_index] = animation_core->global_root_inverse_matrix_buffer[skeleton_index] * animation_core->node_buffer[current_node_index].global_transform_matrix * animation_core->bone_buffer[current_skeletal_mesh_bone_buffer_offset + current_bone_buffer_index].inverse_bind_pose_matrix;
+		}
+	}
+}
+
+u32 lightray_compute_skeletal_mesh_bone_count_with_respect_to_instance_count(u32 bone_count, u32 instance_count)
+{
+	return bone_count * instance_count;
+}
+
+u32 lightray_compute_computed_bone_transform_matrix_buffer_offset_with_respect_to_instance(u32 instance_index, u32 bone_count, u32 base_offset)
+{
+	return (instance_index * bone_count) + base_offset;
+}
+
+void lightray_assimp_get_node_hierarchy_metadata(const aiNode* node, u32* total_node_count, u64* aligned_name_byte_code_size, u32 alignment)
+{
+	(*aligned_name_byte_code_size) = sunder_update_aligned_value_u64(*aligned_name_byte_code_size, node->mName.length, alignment);
+	(*total_node_count)++;
+	const u32 node_children_count = node->mNumChildren;
+
+	for (u32 i = 0; i < node_children_count; i++)
+	{
+		lightray_assimp_get_node_hierarchy_metadata(node->mChildren[i], total_node_count, aligned_name_byte_code_size, alignment);
+	}
+}
+
+void lightray_populate_node_related_string_upon_suballocation(sunder_arena_t* arena, sunder_string_t* host, cstring_literal* string, u32 length)
+{
+	const sunder_arena_suballocation_result_t string_suballocation_result = sunder_suballocate_from_arena_debug(arena, length + 1, 2);
+	host->data = SUNDER_CAST(char*, string_suballocation_result.data);
+	host->length = length;
+
+	for (u32 n = 0; n < length; n++)
+	{
+		host->data[n] = string[n];
+	}
+
+	host->data[length] = 0;
+}
+
+void lightray_assimp_execute_first_node_buffer_population_pass(const aiNode* node, lightray_node_t* node_buffer, sunder_arena_t* arena, sunder_string_t* names, u32* current_index)
+{
+	const u32 node_name_length = node->mName.length;
+	cstring_literal* node_name = node->mName.C_Str();
+	const u32 node_children_count = node->mNumChildren;
+	const u32 derefed_current_index = *current_index;
+
+	SUNDER_LOG("\n");
+	SUNDER_LOG(derefed_current_index);
+
+	SUNDER_LOG("\n");
+	SUNDER_LOG(node_name);
+
+	node_buffer[derefed_current_index].local_transform_matrix = lightray_assimp_to_glm_mat4(node->mTransformation);
+	lightray_populate_node_related_string_upon_suballocation(arena, &names[derefed_current_index], node_name, node_name_length);
+	(*current_index)++;
+
+	for (u32 i = 0; i < node_children_count; i++)
+	{
+		lightray_assimp_execute_first_node_buffer_population_pass(node->mChildren[i], node_buffer, arena, names, current_index);
+	}
+}
+
+void lightray_assimp_execute_second_node_buffer_population_pass(const aiNode* node, lightray_node_t* node_buffer, u32 node_count, const sunder_string_t* names, u32* current_index)
+{
+	const u32 derefed_current_index = *current_index;
+	SUNDER_LOG("\n");
+	SUNDER_LOG(derefed_current_index);
+	const u32 node_children_count = node->mNumChildren;
+	u32 parent_index = LIGHTRAY_INVALID_NODE_PARENT_INDEX;
+
+	if (node->mParent != nullptr)
+	{
+		const u32 parent_node_name_length = node->mParent->mName.length;
+		cstring_literal* parent_node_name = node->mParent->mName.C_Str();
+
+		for (u32 i = 0; i < node_count; i++)
+		{
+			const bool parent_node_names_match = sunder_compare_strings(names[i].data, names[i].length, parent_node_name, parent_node_name_length);
+
+			if (parent_node_names_match)
+			{
+				parent_index = i;
+				break;
+			}
+		}
+	}
+
+	node_buffer[derefed_current_index].parent_index = parent_index;
+	(*current_index)++;
+
+	for (u32 i = 0; i < node_children_count; i++)
+	{
+		lightray_assimp_execute_second_node_buffer_population_pass(node->mChildren[i], node_buffer, node_count, names, current_index);
+	}
+}
+
+void lightray_log_mesh_binding_offset_buffer(const lightray_scene_t* scene)
+{
+	SUNDER_LOG("\n\nmesh binding offsets\n");
+	for (u32 i = 0; i < scene->total_mesh_count; i++)
+	{
+		SUNDER_LOG(scene->mesh_binding_offsets[i].current_opaque_instance_model_index);
+		SUNDER_LOG(" ");
+		SUNDER_LOG(scene->mesh_binding_offsets[i].last_opaque_instance_model_index);
+		SUNDER_LOG("\n\n");
+	}
+}
+
+void lightray_log_mesh_binding_metadata_buffer(const lightray_scene_t* scene)
+{
+	SUNDER_LOG("\n\nmesh binding metadata buffer\n");
+	for (u32 i = 0; i < scene->total_mesh_count; i++)
+	{
+		SUNDER_LOG(scene->mesh_binding_metadata_buffer[i].current_binding_count);
+		SUNDER_LOG(" ");
+		SUNDER_LOG(scene->mesh_binding_metadata_buffer[i].instance_count);
+		SUNDER_LOG("\n\n");
+	}
+}
+
+void lightray_log_mesh_binding_buffer(const lightray_scene_t* scene)
+{
+	SUNDER_LOG("\n\nmesh binding buffer\n");
+	for (u32 i = 0; i < scene->mesh_binding_count; i++)
+	{
+		SUNDER_LOG(scene->mesh_binding_buffer[i].transform_index);
+		SUNDER_LOG(" ");
+		SUNDER_LOG(scene->mesh_binding_buffer[i].instance_model_index);
+		SUNDER_LOG("\n\n");
+	}
+}
+
+u32 lightray_get_skeletal_mesh_global_mesh_index(u32 skeletal_mesh_index, u32 static_mesh_count)
+{
+	return static_mesh_count + skeletal_mesh_index;
+}
+
+glm::vec2 lightray_get_cursor_position(GLFWwindow* window)
+{
+	f64 x = 0;
+	f64 y = 0;
+	glfwGetCursorPos(window, &x, &y);
+
+	return glm::vec2(x, y);
 }
