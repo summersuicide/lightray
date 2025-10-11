@@ -3,8 +3,6 @@
 #include "snd_lib.h"
 #define GLFW_STATIC
 #include "glfw3.h"
-#define GLFW_EXPOSE_NATIVE_WIN32
-#include "glfw3native.h"
 #define GLM_ENABLE_EXPERIMENTAL
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
@@ -22,148 +20,149 @@
 #include <intrin.h>
 #include <immintrin.h>
 
-#define LIGHTRAY_KEY_SPACE              32
-#define LIGHTRAY_KEY_APOSTROPHE    39  /* ' */
-#define LIGHTRAY_KEY_COMMA              44  /* , */
-#define LIGHTRAY_KEY_MINUS              45  /* - */
-#define LIGHTRAY_KEY_PERIOD             46  /* . */
-#define LIGHTRAY_KEY_SLASH              47  /* / */
-#define LIGHTRAY_KEY_0                  48
-#define LIGHTRAY_KEY_1                  49
-#define LIGHTRAY_KEY_2                  50
-#define LIGHTRAY_KEY_3                  51
-#define LIGHTRAY_KEY_4                  52
-#define LIGHTRAY_KEY_5                  53
-#define LIGHTRAY_KEY_6                  54
-#define LIGHTRAY_KEY_7                  55
-#define LIGHTRAY_KEY_8                  56
-#define LIGHTRAY_KEY_9                  57
-#define LIGHTRAY_KEY_SEMICOLON          59  /* ; */
-#define LIGHTRAY_KEY_EQUAL              61  /* = */
-#define LIGHTRAY_KEY_A                  65
-#define LIGHTRAY_KEY_B                  66
-#define LIGHTRAY_KEY_C                  67
-#define LIGHTRAY_KEY_D                  68
-#define LIGHTRAY_KEY_E                  69
-#define LIGHTRAY_KEY_F                  70
-#define LIGHTRAY_KEY_G                  71
-#define LIGHTRAY_KEY_H                  72
-#define LIGHTRAY_KEY_I                  73
-#define LIGHTRAY_KEY_J                  74
-#define LIGHTRAY_KEY_K                  75
-#define LIGHTRAY_KEY_L                  76
-#define LIGHTRAY_KEY_M                  77
-#define LIGHTRAY_KEY_N                  78
-#define LIGHTRAY_KEY_O                  79
-#define LIGHTRAY_KEY_P                  80
-#define LIGHTRAY_KEY_Q                  81
-#define LIGHTRAY_KEY_R                  82
-#define LIGHTRAY_KEY_S                  83
-#define LIGHTRAY_KEY_T                  84
-#define LIGHTRAY_KEY_U                  85
-#define LIGHTRAY_KEY_V                  86
-#define LIGHTRAY_KEY_W                  87
-#define LIGHTRAY_KEY_X                  88
-#define LIGHTRAY_KEY_Y                  89
-#define LIGHTRAY_KEY_Z                  90
-#define LIGHTRAY_KEY_LEFT_BRACKET       91  /* [ */
-#define LIGHTRAY_KEY_BACKSLASH          92  /* \ */
-#define LIGHTRAY_KEY_RIGHT_BRACKET      93  /* ] */
-#define LIGHTRAY_KEY_GRAVE_ACCENT       96  /* ` */
-#define LIGHTRAY_KEY_WORLD_1            161 /* non-US #1 */
-#define LIGHTRAY_KEY_WORLD_2            162 /* non-US #2 */
-
-/* Function keys */
-#define LIGHTRAY_KEY_ESCAPE             256
-#define LIGHTRAY_KEY_ENTER              257
-#define LIGHTRAY_KEY_TAB                258
-#define LIGHTRAY_KEY_BACKSPACE          259
-#define LIGHTRAY_KEY_INSERT             260
-#define LIGHTRAY_KEY_DELETE             261
-#define LIGHTRAY_KEY_RIGHT              262
-#define LIGHTRAY_KEY_LEFT               263
-#define LIGHTRAY_KEY_DOWN               264
-#define LIGHTRAY_KEY_UP                 265
-#define LIGHTRAY_KEY_PAGE_UP            266
-#define LIGHTRAY_KEY_PAGE_DOWN          267
-#define LIGHTRAY_KEY_HOME               268
-#define LIGHTRAY_KEY_END                269
-#define LIGHTRAY_KEY_CAPS_LOCK          280
-#define LIGHTRAY_KEY_SCROLL_LOCK        281
-#define LIGHTRAY_KEY_NUM_LOCK           282
-#define LIGHTRAY_KEY_PRINT_SCREEN       283
-#define LIGHTRAY_KEY_PAUSE              284
-#define LIGHTRAY_KEY_F1                 290
-#define LIGHTRAY_KEY_F2                 291
-#define LIGHTRAY_KEY_F3                 292
-#define LIGHTRAY_KEY_F4                 293
-#define LIGHTRAY_KEY_F5                 294
-#define LIGHTRAY_KEY_F6                 295
-#define LIGHTRAY_KEY_F7                 296
-#define LIGHTRAY_KEY_F8                 297
-#define LIGHTRAY_KEY_F9                 298
-#define LIGHTRAY_KEY_F10                299
-#define LIGHTRAY_KEY_F11                300
-#define LIGHTRAY_KEY_F12                301
-#define LIGHTRAY_KEY_F13                302
-#define LIGHTRAY_KEY_F14                303
-#define LIGHTRAY_KEY_F15                304
-#define LIGHTRAY_KEY_F16                305
-#define LIGHTRAY_KEY_F17                306
-#define LIGHTRAY_KEY_F18                307
-#define LIGHTRAY_KEY_F19                308
-#define LIGHTRAY_KEY_F20                309
-#define LIGHTRAY_KEY_F21                310
-#define LIGHTRAY_KEY_F22                311
-#define LIGHTRAY_KEY_F23                312
-#define LIGHTRAY_KEY_F24                313
-#define LIGHTRAY_KEY_F25                314
-#define LIGHTRAY_KEY_KP_0               320
-#define LIGHTRAY_KEY_KP_1               321
-#define LIGHTRAY_KEY_KP_2               322
-#define LIGHTRAY_KEY_KP_3               323
-#define LIGHTRAY_KEY_KP_4               324
-#define LIGHTRAY_KEY_KP_5               325
-#define LIGHTRAY_KEY_KP_6               326
-#define LIGHTRAY_KEY_KP_7               327
-#define LIGHTRAY_KEY_KP_8               328
-#define LIGHTRAY_KEY_KP_9               329
-#define LIGHTRAY_KEY_KP_DECIMAL         330
-#define LIGHTRAY_KEY_KP_DIVIDE          331
-#define LIGHTRAY_KEY_KP_MULTIPLY        332
-#define LIGHTRAY_KEY_KP_SUBTRACT        333
-#define LIGHTRAY_KEY_KP_ADD             334
-#define LIGHTRAY_KEY_KP_ENTER           335
-#define LIGHTRAY_KEY_KP_EQUAL           336
-#define LIGHTRAY_KEY_LEFT_SHIFT         340
-#define LIGHTRAY_KEY_LEFT_CONTROL       341
-#define LIGHTRAY_KEY_LEFT_ALT           342
-#define LIGHTRAY_KEY_LEFT_SUPER         343
-#define LIGHTRAY_KEY_RIGHT_SHIFT        344
-#define LIGHTRAY_KEY_RIGHT_CONTROL      345
-#define LIGHTRAY_KEY_RIGHT_ALT          346
-#define LIGHTRAY_KEY_RIGHT_SUPER        347
-#define LIGHTRAY_KEY_MENU               348
-
-#define LIGHTRAY_MOUSE_BUTTON_1         0
-#define LIGHTRAY_MOUSE_BUTTON_2         1
-#define LIGHTRAY_MOUSE_BUTTON_3         2
-#define LIGHTRAY_MOUSE_BUTTON_4         3
-#define LIGHTRAY_MOUSE_BUTTON_5         4
-#define LIGHTRAY_MOUSE_BUTTON_6         5
-#define LIGHTRAY_MOUSE_BUTTON_7         6
-#define LIGHTRAY_MOUSE_BUTTON_8         7
-#define LIGHTRAY_MOUSE_BUTTON_LAST      LIGHTRAY_MOUSE_BUTTON_8
-#define LIGHTRAY_MOUSE_BUTTON_LEFT      LIGHTRAY_MOUSE_BUTTON_1
-#define LIGHTRAY_MOUSE_BUTTON_RIGHT     LIGHTRAY_MOUSE_BUTTON_2
-#define LIGHTRAY_MOUSE_BUTTON_MIDDLE    LIGHTRAY_MOUSE_BUTTON_3
-
 #define LIGHTRAY_LOG(a) std::cout << a
 #define LIGHTRAY_WORLD_FORWARD_VECTOR 0.0f, 1.0f, 0.0f
 #define LIGHTRAY_WORLD_RIGHT_VECTOR 1.0f, 0.0f, 0.0f
 #define LIGHTRAY_WORLD_UP_VECTOR 0.0f, 0.0f, 1.0f
 // based
 #define plex struct
+
+#define LIGHTRAY_INVALID_BONE_PARENT_INDEX 65790u
+#define LIGHTRAY_INVALID_COMPUTED_BONE_TRANSFORM_MATRIX_BUFFER_OFFSET UINT16_MAX
+#define LIGHTRAY_SHADER_BYTE_CODE_SIZE_LIMIT 900'000ull
+#define LIGHTRAY_INVALID_NODE_BONE_BUFFER_INDEX 68790u
+#define LIGHTRAY_INVALID_NODE_ANIMATION_CHANNEL_BUFFER_INDEX 72790u
+#define LIGHTRAY_INVALID_NODE_PARENT_INDEX 76790u
+#define LIGHTRAY_DEFAULT_ANIMATION_TICKRATE 24.0f
+#define LIGHTRAY_MAIN_3D_CAMERA_INDEX 0u
+
+#define LIGHTRAY_KEY_BOUND(key) ((key) != LIGHTRAY_KEY_BINDING_UNBOUND)
+
+enum lightray_key_binding : i32
+{
+	LIGHTRAY_KEY_BINDING_UNBOUND = INT32_MAX,
+	LIGHTRAY_KEY_BINDING_MOUSE_BUTTON_LEFT = 0,
+	LIGHTRAY_KEY_BINDING_MOUSE_BUTTON_RIGHT = 1,
+	LIGHTRAY_KEY_BINDING_MOUSE_BUTTON_MIDDLE = 2,
+	LIGHTRAY_KEY_BINDING_SPACE = 32,
+	LIGHTRAY_KEY_BINDING_APOSTROPHE = 39,
+	LIGHTRAY_KEY_BINDING_COMMA = 44,
+	LIGHTRAY_KEY_BINDING_MINUS = 45,
+	LIGHTRAY_KEY_BINDING_PERIOD = 46,
+	LIGHTRAY_KEY_BINDING_SLASH = 47,
+	LIGHTRAY_KEY_BINDING_0 = 48,
+	LIGHTRAY_KEY_BINDING_1 = 49,
+	LIGHTRAY_KEY_BINDING_2 = 50,
+	LIGHTRAY_KEY_BINDING_3 = 51,
+	LIGHTRAY_KEY_BINDING_4 = 52,
+	LIGHTRAY_KEY_BINDING_5 = 53,
+	LIGHTRAY_KEY_BINDING_6 = 54,
+	LIGHTRAY_KEY_BINDING_7 = 55,
+	LIGHTRAY_KEY_BINDING_8 = 56,
+	LIGHTRAY_KEY_BINDING_9 = 57,
+	LIGHTRAY_KEY_BINDING_SEMICOLON = 59,
+	LIGHTRAY_KEY_BINDING_EQUAL = 61,
+	LIGHTRAY_KEY_BINDING_A = 65,
+	LIGHTRAY_KEY_BINDING_B = 66,
+	LIGHTRAY_KEY_BINDING_C = 67,
+	LIGHTRAY_KEY_BINDING_D = 68,
+	LIGHTRAY_KEY_BINDING_E = 69,
+	LIGHTRAY_KEY_BINDING_F = 70,
+	LIGHTRAY_KEY_BINDING_G = 71,
+	LIGHTRAY_KEY_BINDING_H = 72,
+	LIGHTRAY_KEY_BINDING_I = 73,
+	LIGHTRAY_KEY_BINDING_J = 74,
+	LIGHTRAY_KEY_BINDING_K = 75,
+	LIGHTRAY_KEY_BINDING_L = 76,
+	LIGHTRAY_KEY_BINDING_M = 77,
+	LIGHTRAY_KEY_BINDING_N = 78,
+	LIGHTRAY_KEY_BINDING_O = 79,
+	LIGHTRAY_KEY_BINDING_P = 80,
+	LIGHTRAY_KEY_BINDING_Q = 81,
+	LIGHTRAY_KEY_BINDING_R = 82,
+	LIGHTRAY_KEY_BINDING_S = 83,
+	LIGHTRAY_KEY_BINDING_T = 84,
+	LIGHTRAY_KEY_BINDING_U = 85,
+	LIGHTRAY_KEY_BINDING_V = 86,
+	LIGHTRAY_KEY_BINDING_W = 87,
+	LIGHTRAY_KEY_BINDING_X = 88,
+	LIGHTRAY_KEY_BINDING_Y = 89,
+	LIGHTRAY_KEY_BINDING_Z = 90,
+	LIGHTRAY_KEY_BINDING_LEFT_BRACKET = 91, 
+	LIGHTRAY_KEY_BINDING_BACKSLASH = 92,
+	LIGHTRAY_KEY_BINDING_RIGHT_BRACKET = 93, 
+	LIGHTRAY_KEY_BINDING_GRAVE_ACCENT = 96,
+	LIGHTRAY_KEY_BINDING_ESCAPE = 256,
+	LIGHTRAY_KEY_BINDING_ENTER = 257,
+	LIGHTRAY_KEY_BINDING_TAB = 258,
+	LIGHTRAY_KEY_BINDING_BACKSPACE = 259,
+	LIGHTRAY_KEY_BINDING_INSERT = 260,
+	LIGHTRAY_KEY_BINDING_DELETE = 261,
+	LIGHTRAY_KEY_BINDING_RIGHT = 262,
+	LIGHTRAY_KEY_BINDING_LEFT = 263,
+	LIGHTRAY_KEY_BINDING_DOWN = 264,
+	LIGHTRAY_KEY_BINDING_UP = 265,
+	LIGHTRAY_KEY_BINDING_PAGE_UP = 266,
+	LIGHTRAY_KEY_BINDING_PAGE_DOWN = 267,
+	LIGHTRAY_KEY_BINDING_HOME = 268,
+	LIGHTRAY_KEY_BINDING_END = 269,
+	LIGHTRAY_KEY_BINDING_CAPS_LOCK = 280,
+	LIGHTRAY_KEY_BINDING_SCROLL_LOCK = 281,
+	LIGHTRAY_KEY_BINDING_NUM_LOCK = 282,
+	LIGHTRAY_KEY_BINDING_PRINT_SCREEN = 283,
+	LIGHTRAY_KEY_BINDING_PAUSE = 284,
+	LIGHTRAY_KEY_BINDING_F1 = 290,
+	LIGHTRAY_KEY_BINDING_F2 = 291,
+	LIGHTRAY_KEY_BINDING_F3 = 292,
+	LIGHTRAY_KEY_BINDING_F4 = 293,
+	LIGHTRAY_KEY_BINDING_F5 = 294,
+	LIGHTRAY_KEY_BINDING_F6 = 295,
+	LIGHTRAY_KEY_BINDING_F7 = 296,
+	LIGHTRAY_KEY_BINDING_F8 = 297,
+	LIGHTRAY_KEY_BINDING_F9 = 298,
+	LIGHTRAY_KEY_BINDING_F10 = 299,
+	LIGHTRAY_KEY_BINDING_F11 = 300,
+	LIGHTRAY_KEY_BINDING_F12 = 301,
+	LIGHTRAY_KEY_BINDING_F13 = 302,
+	LIGHTRAY_KEY_BINDING_F14 = 303,
+	LIGHTRAY_KEY_BINDING_F15 = 304,
+	LIGHTRAY_KEY_BINDING_F16 = 305,
+	LIGHTRAY_KEY_BINDING_F17 = 306,
+	LIGHTRAY_KEY_BINDING_F18 = 307,
+	LIGHTRAY_KEY_BINDING_F19 = 308,
+	LIGHTRAY_KEY_BINDING_F20 = 309,
+	LIGHTRAY_KEY_BINDING_F21 = 310,
+	LIGHTRAY_KEY_BINDING_F22 = 311,
+	LIGHTRAY_KEY_BINDING_F23 = 312,
+	LIGHTRAY_KEY_BINDING_F24 = 313,
+	LIGHTRAY_KEY_BINDING_F25 = 314,
+	LIGHTRAY_KEY_BINDING_KP_0 = 320,
+	LIGHTRAY_KEY_BINDING_KP_1 = 321,
+	LIGHTRAY_KEY_BINDING_KP_2 = 322,
+	LIGHTRAY_KEY_BINDING_KP_3 = 323,
+	LIGHTRAY_KEY_BINDING_KP_4 = 324,
+	LIGHTRAY_KEY_BINDING_KP_5 = 325,
+	LIGHTRAY_KEY_BINDING_KP_6 = 326,
+	LIGHTRAY_KEY_BINDING_KP_7 = 327,
+	LIGHTRAY_KEY_BINDING_KP_8 = 328,
+	LIGHTRAY_KEY_BINDING_KP_9 = 329,
+	LIGHTRAY_KEY_BINDING_KP_DECIMAL = 330,
+	LIGHTRAY_KEY_BINDING_KP_DIVIDE = 331,
+	LIGHTRAY_KEY_BINDING_KP_MULTIPLY = 332,
+	LIGHTRAY_KEY_BINDING_KP_SUBTRACT = 333,
+	LIGHTRAY_KEY_BINDING_KP_ADD = 334,
+	LIGHTRAY_KEY_BINDING_KP_ENTER = 335,
+	LIGHTRAY_KEY_BINDING_KP_EQUAL = 336,
+	LIGHTRAY_KEY_BINDING_LEFT_SHIFT = 340,
+	LIGHTRAY_KEY_BINDING_LEFT_CONTROL = 341,
+	LIGHTRAY_KEY_BINDING_LEFT_ALT = 342,
+	LIGHTRAY_KEY_BINDING_LEFT_SUPER = 343,
+	LIGHTRAY_KEY_BINDING_RIGHT_SHIFT = 344,
+	LIGHTRAY_KEY_BINDING_RIGHT_CONTROL = 345,
+	LIGHTRAY_KEY_BINDING_RIGHT_ALT = 346,
+	LIGHTRAY_KEY_BINDING_RIGHT_SUPER = 347,
+	LIGHTRAY_KEY_BINDING_MENU = 348
+};
 
 struct u128_t
 {
@@ -176,6 +175,34 @@ struct u128_t
 	}
 };
 
+enum lightray_asset_kind : u32
+{
+	LIGHTRAY_ASSET_KIND_UNDEFINED = 0u,
+	LIGHTRAY_ASSET_KIND_STATIC_MESH = 1u,
+	LIGHTRAY_ASSET_KIND_SKELETAL_MESH = 2u,
+	LIGHTRAY_ASSET_KIND_SHADER = 3u,
+	LIGHTRAY_ASSET_KIND_TEXTURE = 4u,
+	LIGHTRAY_ASSET_KIND_ANIMATION = 5u,
+	LIGHTRAY_ASSET_KIND_SOUND = 6u
+};
+
+// add that as an argument to any function that accepts asset related indices to load, bind, play, apply, whatever the fuck 
+enum lightray_asset_index_kind : u32
+{
+	LIGHTRAY_ASSET_INDEX_KIND_SETUP_TIME = 0u,
+	LIGHTRAY_ASSET_INDEX_KIND_RUNTIME = 1u
+};
+
+struct lightray_runtime_asset_loading_indices_t
+{
+	u32 skeletal_mesh_index;
+	u32 static_mesh_index;
+	u32 texture_index;
+	u32 shader_index;
+	u32 animation_index;
+	u32 sound_index;
+};
+
 enum lightray_result : u32
 {
 	LIGHTRAY_RESULT_SUCCESS = 0u,
@@ -186,9 +213,12 @@ enum lightray_result : u32
 	LIGHTRAY_RESULT_TOTAL_ENTITY_COUNT_IS_ZERO = 6u,
 	LIGHTRAY_RESULT_COLLISION_MESH_COUNT_OF_SPECIFIED_MESH_IS_ZERO = 7u,
 	LIGHTRAY_RESULT_INSTANCE_COUNT_OF_SPECIFIED_MESH_IS_ZERO = 8u,
-	LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED = 9u
+	LIGHTRAY_RESULT_COUNT_OF_MESH_BINDINGS_FOR_SPECIFIED_MESH_HAS_BEEN_EXCEEDED = 9u,
+	LIGHTRAY_RESULT_MESH_BINDING_OVERFLOW = 10u,
+	LIGHTRAY_RESULT_FAILED_TO_OPEN_COMPILED_SHADER_BYTE_CODE = 11u,
+	LIGHTRAY_RESULT_COMPILED_SHADER_BYTE_CODE_SIZE_LIMIT_HAS_BEEN_EXCEEDED = 12u,
+	LIGHTRAY_RESULT_FAILED_TO_LOAD_COMPILED_SHADER_BYTE_CODE = 13u
 };
-
 
 enum lightray_render_target_kind : u32
 {
@@ -199,22 +229,49 @@ enum lightray_render_target_kind : u32
 
 enum lightray_bits : u64
 {
-	LIGHTRAY_BITS_KEY_CAN_BE_PRESSED = 0ull,
+	LIGHTRAY_BITS_KEY_CAN_BE_PRESSED_BIT = 0ull,
 	LIGHTRAY_BITS_USER_CHOSEN_PRESENT_MODE_BIT = 1ull,
 	LIGHTRAY_BITS_PRESENT_MODE_FIFO_SUPPORTED_BIT = 2ull,
 	LIGHTRAY_BITS_PRESENT_MODE_MAILBOX_SUPPORTED_BIT = 3ull,
 	LIGHTRAY_BITS_PRESENT_MODE_IMMEDIATE_SUPPORTED_BIT = 4ull,
-	LIGHTRAY_BITS_IS_FPS_CAPPED = 5ull
+	LIGHTRAY_BITS_FPS_CAPPED_BIT = 5ull
 };
 
-enum lightray_spg_entity_kind : u32
+enum lightray_spatial_partitioning_grid_entity_kind : u32
 {
-	LIGHTRAY_SPG_ENTITY_KIND_STATIC = 0u,
-	LIGHTRAY_SPG_ENTITY_KIND_DYNAMIC = 1u
+	LIGHTRAY_SPATIAL_PARTITIONING_GRID_ENTITY_KIND_STATIC = 0u,
+	LIGHTRAY_SPATIAL_PARTITIONING_GRID_ENTITY_KIND_DYNAMIC = 1u
 };
 
-// spatial partitioning grid
-struct lightray_spg_t
+enum lightray_animation_status : u32
+{
+	LIGHTRAY_ANIMATION_STATUS_BIND_POSE = 0u,
+	LIGHTRAY_ANIMATION_STATUS_ACTIVE = 1u,
+	LIGHTRAY_ANIMATION_STATUS_FROZEN = 2u
+};
+
+enum lightray_animation_bits : u32
+{
+	LIGHTRAY_ANIMATION_BITS_SHOULD_PLAY_BIT = 0u,
+	LIGHTRAY_ANIMATION_BITS_SHOULD_RESTART_BIT = 1u
+};
+
+enum lightray_animation_playback_bits : u32
+{
+	LIGHTRAY_ANIMATION_PLAYBACK_BITS_LOOP_BIT = 0u
+};
+
+struct lightray_animation_playback_command_t
+{
+	u32 instance_index = 0;
+	u32 skeletal_mesh_index = 0;
+	u32 animation_index = 0;
+	f32 scale = 0.0f;
+	f32 time = 0.0f;
+	f32 ticks = 0.0f;
+};
+
+struct lightray_spatial_partitioning_grid_t
 {
 
 };
@@ -222,9 +279,14 @@ struct lightray_spg_t
 struct lightray_vertex_t
 {
 	glm::vec3 position;
+	f32 padding0;
+
 	glm::vec3 normal;
-	glm::vec2 texture_coordinates;
-	f32 alpha;
+	f32 padding1;
+
+	glm::vec2 uv;
+	glm::u8vec4 bone_indices;
+	glm::u8vec4 weights;
 };
 
 struct lightray_model_t
@@ -232,10 +294,11 @@ struct lightray_model_t
 	glm::mat4 model{};
 };
 
-struct alignas (16) lightray_render_instance_t
+struct lightray_render_instance_t
 {
 	lightray_model_t model{};
 	f32 layer_index = 0.0f;
+	u32 computed_bone_transform_matrix_buffer_offset_with_respect_to_instance = 0;
 };
 
 // camera's view, projection matrices
@@ -247,19 +310,126 @@ struct lightray_cvp_t
 
 struct lightray_cursor_t
 {
-	glm::dvec2 last_position;
-	glm::dvec2 current_position;
+	glm::vec2 last_position;
+	glm::vec2 current_position;
+};
+
+enum lightray_camera_projection_kind : u16
+{
+	LIGHTRAY_CAMERA_PROJECTION_KIND_UNDEFINED = 0,
+	LIGHTRAY_CAMERA_PROJECTION_KIND_PERSPECTIVE = 1,
+	LIGHTRAY_CAMERA_PROJECTION_KIND_ORTHOGRAPHIC = 2
 };
 
 struct lightray_camera_t
 {
-	glm::vec3 position;
-	glm::vec2 rotation; // yaw - x , pitch - y 
-	f32 sensetivity;
-	f32 near_plane;
-	f32 far_plane;
-	f32 fov;
-	bool first_camera_tick;
+	glm::vec3 position{};
+	glm::vec2 rotation{}; // yaw - x , pitch - y 
+	f32 sensetivity = 0;
+	f32 fov = 0;
+	f32 near_clip_plane_distance = 0;
+	f32 far_clip_plane_distance = 0;
+	lightray_camera_projection_kind projection_kind = LIGHTRAY_CAMERA_PROJECTION_KIND_UNDEFINED;
+	bool first_camera_tick{};
+};
+
+struct lightray_node_t
+{
+	u32 parent_index = 0; // relative
+	u32 bone_buffer_index = 0; // relative
+	u32 animation_channel_buffer_index = 0; // relative
+	glm::mat4 local_transform_matrix{};
+	glm::mat4 global_transform_matrix;
+};
+
+struct lightray_bone_t
+{
+	glm::mat4 inverse_bind_pose_matrix{};
+};
+
+struct lightray_animation_key_vec3_t
+{
+	glm::vec3 vec;
+	f32 time;
+};
+
+struct lightray_animation_key_quat_t
+{
+	glm::quat quat;
+	f32 time;
+};
+
+struct lightray_animation_channel_t
+{
+	u32 position_key_buffer_offset;
+	u32 position_key_count;
+
+	u32 rotation_key_buffer_offset;
+	u32 rotation_key_count;
+
+	u32 scale_key_buffer_offset;
+	u32 scale_key_count;
+};
+
+struct lightray_animation_t
+{
+	u32 channel_buffer_offset;
+	u32 channel_count;
+	f32 tickrate;
+	f32 duration;
+};
+
+struct lightray_skeleton_t
+{
+	u32 computed_bone_transform_matrix_buffer_offset;
+	u32 computed_bone_transform_matrix_buffer_bone_count;
+
+	u32 bone_buffer_offset;
+	u32 bone_count;
+
+	u32 node_buffer_offset;
+	u32 node_count;
+
+	u32 instance_count;
+};
+
+struct lightray_animation_core_t
+{
+	lightray_animation_playback_command_t* playback_command_buffer; // per skeletal mesh instance
+	u32 playback_command_count;
+	u32 total_skeletal_mesh_instance_count;
+	u64 playback_flags; // 1 bit per skeletal mesh / layer maybe change that to an array depending on skeletal mesh instance count
+	u64 looped_playback_flags;  // 1 bit per skeletal mesh / layer maybe change that to an array depending on skeletal mesh instance count
+
+	lightray_node_t* node_buffer;
+	u32 total_node_count;
+
+	sunder_string_t* node_names;
+	sunder_string_t* animation_channel_names;
+	sunder_string_t* bone_names;
+
+	glm::mat4* global_root_inverse_matrix_buffer;
+	glm::mat4* bone_bind_pose_matrix_buffer;
+	glm::mat4* computed_bone_matrix_buffer; // sent to the gpu in a storage buffer
+	u32 largest_skeleton_bone_count; // obsolete
+	u32 total_computed_bone_transform_matrix_buffer_bone_count;
+
+	lightray_bone_t* bone_buffer; // change that to just inverse bind pose matrix buffer
+	lightray_skeleton_t* skeleton_buffer;
+	u32 total_bone_count;
+	u32 total_skeleton_count;
+
+	lightray_animation_key_vec3_t* animation_position_key_buffer;
+	lightray_animation_key_quat_t* animation_rotation_key_buffer;
+	lightray_animation_key_vec3_t* animation_scale_key_buffer;
+	u32 total_animation_position_key_count;
+	u32 total_animation_rotation_key_count;
+	u32 total_animation_scale_key_count;
+
+	lightray_animation_channel_t* animation_channel_buffer;
+	lightray_animation_t* animation_buffer;
+	u32 total_animation_channel_count;
+	u32 total_animation_count;
 };
 
 struct lightray_ray_t
@@ -267,12 +437,6 @@ struct lightray_ray_t
 	glm::vec3 origin{};
 	glm::vec3 direction{};
 	f32 distance = 0;
-};
-
-struct lightray_buffer_index_query_result_t
-{
-	u32 value_at_index = UINT32_MAX;
-	u32 return_index = UINT32_MAX;
 };
 
 enum lightray_undefined_value : u32
@@ -344,6 +508,7 @@ struct lightray_mesh_binding_metadata_t
 	u32 current_binding_count = 0;
 };
 
+// rename this to entity_core_t
 struct lightray_scene_t
 {
 	u32 total_instance_model_count = 0;
@@ -358,22 +523,47 @@ struct lightray_scene_t
 
 	lightray_mesh_binding_offsets_t* mesh_binding_offsets = nullptr; // per mesh
 	lightray_mesh_binding_t* mesh_binding_buffer = nullptr; // per instance model
-	lightray_mesh_binding_metadata_t* mesh_binding_metadata_buffer = nullptr;
+	lightray_mesh_binding_metadata_t* mesh_binding_metadata_buffer = nullptr; // per mesh
 	u32 mesh_binding_count = 0;
-	u64 visibility_flags = 0; // 1 bit per instance model
+	u64 visibility_flags = 0; // 1 bit per entity / should be an array of u64
 };
 
-void														lightray_get_shader_byte_code(cstring_literal* path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit);
+struct lightray_console_t
+{
+	char* buffer = nullptr;
+	u32 current_size = 0;
+	u32 current_index = 0;
+	u32 capacity = 0;
+};
+
+/*
+struct lightray_world_view_t
+{
+};
+
+lightray_result										lightray_load_world_view();
+lightray_result										lightray_push_world_view();
+lightray_result										lightray_flush_world_view();
+lightray_result										lightray_save_world_view();
+lightray_result										lightray_borrow_world_view(borrow_data); // this is called before the push to preserve ("borrow") some data from the previously pushed world view / maybe should rename this to "preserve_world_view"
+lightray_result										lightray_flush_world_view_borrow_buffer();
+u64														lightray_compute_world_view_cache_suballocation_size();
+lightray_result										lightray_suballocate_world_view_cache();
+lightray_result										lightray_cache_world_view();
+lightray_result										lightray_invalidate_world_view();
+
+*/
+
+lightray_result										lightray_load_shader_byte_code(cstring_literal* path, i8* buffer, u64* buffer_size_in_bytes, u64 byte_code_size_limit);
 
 															// returns UINT64_MAX on failure
 u64														lightray_get_shader_byte_code_size(cstring_literal* path);
-std::filesystem::path								lightray_get_project_root_path();
 void														lightray_hide_cursor(GLFWwindow* window);
 void														lightray_unhide_cursor(GLFWwindow* window);
 bool														lightray_should_tick(GLFWwindow* window);
-bool														lightray_is_key_pressed(GLFWwindow* window, i32 key, u8* key_tick_data);
-bool														lightray_is_key_down(GLFWwindow* window, i32 key);
-bool														lightray_is_mouse_button_pressed(GLFWwindow* window, i32 mouse_button, u8* key_tick_data);
+bool														lightray_key_pressed(GLFWwindow* window, lightray_key_binding key, u8* key_tick_data);
+bool														lightray_key_down(GLFWwindow* window, lightray_key_binding key);
+bool														lightray_mouse_button_pressed(GLFWwindow* window, lightray_key_binding mouse_button, u8* key_tick_data);
 glm::mat4												lightray_construct_projection_matrix(f32 desired_fov, f32 aspect_ratio, f32 near_plane, f32 far_plane);
 f32														lightray_compute_aspect_ratio(f32 width, f32 height);
 glm::vec3												lightray_to_world_forward_from_euler(const glm::vec3& euler_radians, const glm::vec3& local_forward);
@@ -381,7 +571,6 @@ glm::vec3												lightray_to_world_forward_from_model(const glm::mat4& model
 glm::vec3												lightray_get_camera_forward(const glm::mat4& camera_view_matrix);
 glm::vec3												lightray_get_camera_right(const glm::mat4& camera_view_matrix);
 bool														lightray_ray_triangle_intersect(const lightray_ray_t* ray, const glm::vec3* triangle_vertices, f32* t, f32* u, f32* v);
-lightray_buffer_index_query_result_t	lightray_query_buffer_index(const u32* buffer, u32 starting_index, u32 ending_index, u32 val_at_index, bool reverse_logic);
 bool														lightray_aabbs_intersect(const glm::vec3& position_a, const glm::vec3& scale_a, const glm::vec3& position_b, const glm::vec3& scale_b);
 void														lightray_get_raw_vertex_positions(u32 index_buffer_offset, u32 index_count, glm::vec3* buffer, const lightray_vertex_t* vertex_buffer, const u32* index_buffer);
 				
@@ -399,7 +588,7 @@ bool														lightray_gjk_intersect(const glm::vec3* vertex_positions1, u64
 
 glm::mat4												lightray_assimp_to_glm_mat4(const aiMatrix4x4& mat);
 u32														lightray_assimp_get_mesh_index_count(const aiMesh* mesh);
-void														lightray_compute_interpolated_bone_positions(aiNodeAnim* animation_channel_buffer, const glm::mat4& parent_transform, glm::mat4* bone_offset_matrix_buffer, f32 delta_time, f64 duration);
+u32														lightray_assimp_get_mesh_index_count_unsafe(const aiMesh* mesh);
 
 u64														lightray_generate_guid64();
 u128_t													lightray_generate_guid128();
@@ -423,4 +612,34 @@ u32														lightray_get_entity_bound_aabb_index_count(const lightray_scene
 void														lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 collision_mesh_index, u32* aabb_index_buffer);
 void														lightray_bind_collision_layer();
 void														lightray_unbind_collision_layer();
-void														lightray_bind_texture();
+void														lightray_log_mesh_binding_offset_buffer(const lightray_scene_t* scene);
+void														lightray_log_mesh_binding_metadata_buffer(const lightray_scene_t* scene);
+void														lightray_log_mesh_binding_buffer(const lightray_scene_t* scene);
+
+															// 0.45 -> 115
+u8															lightray_pack_f32_to_u8(f32 f);
+															// 115 -> 0.45 with some garbage
+f32														lightray_unpack_u8_to_f32(u8 v);
+
+glm::vec3												lightray_assimp_to_glm_vec3(const aiVector3D& vec);
+glm::quat												lightray_assimp_to_glm_quat(const aiQuaternion& quat);
+
+void														lightray_log_animation_playback_frame_time(f32 current_frame_time, f32 animation_duration);
+u32														lightray_get_suitable_scale_key_index(const lightray_animation_key_vec3_t* scale_key_buffer, u32 scale_key_buffer_offset, u32 scale_key_count, f32 animation_in_ticks);
+u32														lightray_get_suitable_rotation_key_index(const lightray_animation_key_quat_t* rotation_key_buffer, u32 rotation_key_buffer_offset, u32 rotation_key_count, f32 animation_in_ticks);
+u32														lightray_get_suitable_position_key_index(const lightray_animation_key_vec3_t* position_key_buffer, u32 position_key_buffer_offset, u32 position_key_count, f32 animation_in_ticks);
+glm::vec3												lightray_compute_interpolated_animation_channel_scale_key(const lightray_animation_channel_t* channel, const lightray_animation_key_vec3_t* scale_key_buffer, f32 animation_in_ticks);
+glm::quat												lightray_compute_interpolated_animation_channel_rotation_key(const lightray_animation_channel_t* channel, const lightray_animation_key_quat_t* rotation_key_buffer, f32 animation_in_ticks);
+glm::vec3												lightray_compute_interpolated_animation_channel_position_key(const lightray_animation_channel_t* channel, const lightray_animation_key_vec3_t* position_key_buffer, f32 animation_in_ticks);
+void														lightray_compute_interpolated_skeleton_transform(lightray_animation_core_t* animation_core, u32 animation_index, u32 skeleton_index, u32 instance_index);
+
+u32														lightray_compute_skeletal_mesh_bone_count_with_respect_to_instance_count(u32 bone_count, u32 instance_count);
+u32														lightray_compute_computed_bone_transform_matrix_buffer_offset_with_respect_to_instance(u32 instance_index, u32 bone_count, u32 base_offset);
+
+void														lightray_assimp_get_node_hierarchy_metadata(const aiNode* node, u32* total_node_count, u64* aligned_name_byte_code_size, u32 alignment);
+void														lightray_populate_node_related_string_upon_suballocation(sunder_arena_t* arena, sunder_string_t* host, cstring_literal* string, u32 length);
+void														lightray_assimp_execute_first_node_buffer_population_pass(const aiNode* node, lightray_node_t* node_buffer, sunder_arena_t* arena, sunder_string_t* names, u32* current_index);
+void														lightray_assimp_execute_second_node_buffer_population_pass(const aiNode* node, lightray_node_t* node_buffer, u32 node_count, const sunder_string_t* names, u32* current_index);
+
+u32														lightray_get_skeletal_mesh_global_mesh_index(u32 skeletal_mesh_index, u32 static_mesh_count);
+glm::vec2												lightray_get_cursor_position(GLFWwindow* window);

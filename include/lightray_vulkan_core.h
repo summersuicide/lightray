@@ -21,24 +21,57 @@
 #define LIGHTRAY_VULKAN_UNIFORM_BUFFER_ALIGNMENT 256U
 #define LIGHTRAY_VULKAN_VERTEX_BUFFER_ALIGNMENT 16U
 #define LIGHTRAY_VULKAN_INDEX_BUFFER_ALIGNMENT 4U
+#define LIGHTRAY_VULKAN_STATIC_STORAGE_BUFFER_ALIGNMENT 16u
+#define LIGHTRAY_VULKAN_DYNAMIC_STORAGE_BUFFER_ALIGNMENT 256u
 #define LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_VERTEX_BUFFER_INDEX 0U
 #define LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_INDEX_BUFFER_INDEX 1U
 #define LIGHTRAY_VULKAN_HOSI_VISIBLE_VRAM_ARENA_VERTEX_BUFFER_INDEX 0U
 #define LIGHTRAY_VULKAN_HOSI_VISIBLE_VRAM_ARENA_INDEX_BUFFER_INDEX 1U
 #define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_INDEX 2U
 #define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_INSTANCE_MODEL_BUFFER_INDEX 3U
-#define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_TEXTURE_BUFFER_INDEX 4U
+#define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_TEXTURE_BUFFER_STARTING_INDEX 4U
 #define LIGHTRAY_VULKAN_STATIC_MESH_VERTEX_SHADER_INDEX 0U
 #define LIGHTRAY_VULKAN_STATIC_MESH_FRAGMENT_SHADER_INDEX 1U
 #define LIGHTRAY_VULKAN_SKELETAL_MESH_VERTEX_SHADER_INDEX 2U
 #define LIGHTRAY_VULKAN_SKELETAL_MESH_FRAGMENT_SHADER_INDEX 3U
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_INDEX 2048u
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_LAYER_INDEX 256
+#define LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT 6u
+
+SUNDER_DEFINE_BUFFER_INDEX_QUERY_RESULT_STRUCTURE(VkFilter, lightray_vulkan, vk_filter, u32)
+
+enum lightray_vulkan_mesh_render_type : u32
+{
+	LIGHTRAY_VULKAN_MESH_RENDER_TYPE_STATIC = 0u,
+	LIGHTRAY_VULKAN_MESH_RENDER_TYPE_SKELETAL = 1u
+};
+
+struct lightray_vulkan_mesh_render_pass_data_buffer_indices_t
+{
+	u32 untextured_starting_offset = 0;
+	u32 untextured_range = 0;
+	u32 textured_starting_offset = 0;
+	u32 textured_range = 0;
+};
+
+struct lightray_vulkan_shader_metadata_t
+{
+	cstring_literal* path = nullptr;
+	VkShaderStageFlagBits stage{};
+};
+
+enum lightray_vulkan_core_setup_bits : u8
+{
+	LIGHTRAY_VULKAN_CORE_SETUP_BITS_TEXTURES_PRESENT_BIT = 0,
+	LIGHTRAY_VULKAN_CORE_SETUP_BITS_SKELETAL_MESHES_PRESENT_BIT = 1,
+	LIGHTRAY_VULKAN_CORE_SETUP_BITS_STATIC_MESHES_PRESENT_BIT = 2,
+	LIGHTRAY_VULKAN_CORE_SETUP_BITS_ANIMATIONS_PRESENT_BIT = 3
+};
 
 // used for grouping unrelated meshes that have the same number of instances, together in one batch. gathered at runtime
 struct lightray_vulkan_render_batch_t
 {
-
+	// later fill this out
 };
 
 struct lightray_vulkan_static_mesh_metadata_t
@@ -48,7 +81,13 @@ struct lightray_vulkan_static_mesh_metadata_t
 	u32 wireframe_count = 0; // how many instances of this mesh will be rendered in wireframe
 };
 
-struct lightray_mesh_render_pass_data_t
+struct lightray_vulkan_skeletal_mesh_metadata_t
+{
+	cstring_literal* path = nullptr;
+	u32 instance_count = 0;
+};
+
+struct lightray_vulkan_mesh_render_pass_data_t
 {
 	u64 vertex_buffer_offset = 0;
 	u64 vertex_count = 0;
@@ -58,11 +97,7 @@ struct lightray_mesh_render_pass_data_t
 	u32 instance_buffer_offset = 0;
 	u32 instance_to_render_count = 0;
 	u32 texture_index = 0;
-};
-
-struct lightray_vulkan_skeletal_mesh_t
-{
-
+	lightray_vulkan_mesh_render_type render_type;
 };
 
 enum lightray_vulkan_result : u32
@@ -88,7 +123,29 @@ enum lightray_vulkan_result : u32
 	LIGHTRAY_VULKAN_RESULT_UNINITIALIZED_TEXTURE_BUFFER = 18u,
 	LIGHTRAY_VULKAN_RESULT_UNINITIALIZED_IMAGE = 19u,
 	LIGHTRAY_VULKAN_RESULT_UNINITIALIZED_VIEW = 20u,
-	LIGHTRAY_VULKAN_RESULT_FAILED_TO_BIND_IMAGE = 21u
+	LIGHTRAY_VULKAN_RESULT_FAILED_TO_BIND_IMAGE = 21u,
+	LIGHTRAY_VULKAN_RESULT_OVERWRITTEN_TEXTURE_INDEX = 22u,
+	LIGHTRAY_VULKAN_RESULT_INVALID_TEXTURE_INDEX = 23u,
+	LIGHTRAY_VULKAN_RESULT_INVALID_MESH_INDEX = 24u
+};
+
+struct lightray_vulkan_runtime_asset_loading_data_t
+{
+	cstring_literal* path = nullptr;
+	sunder_arena_t* arena = nullptr;
+	lightray_asset_kind asset_kind = LIGHTRAY_ASSET_KIND_UNDEFINED;
+	// shader related loading inputs or something
+};
+
+struct lightray_vulkan_runtime_asset_loading_result_t
+{
+	lightray_vulkan_result result = LIGHTRAY_VULKAN_RESULT_FAILURE;
+
+	union
+	{
+		lightray_runtime_asset_loading_indices_t setup_time_indices;
+		lightray_runtime_asset_loading_indices_t runtime_indices;
+	};
 };
 
 enum lightray_vulkan_texture_creation_bits : u8
@@ -96,7 +153,6 @@ enum lightray_vulkan_texture_creation_bits : u8
 	LIGHTRAY_VULKAN_TEXTURE_CREATION_BITS_IMAGE_BIT = 0,
 	LIGHTRAY_VULKAN_TEXTURE_CREATION_BITS_VIEW_BIT = 1
 };
-
 
 enum lightray_vulkan_texture_free_bits : u8
 {
@@ -116,6 +172,7 @@ struct lightray_vulkan_texture_creation_data_t
 	VkImageLayout layout{};
 	VkFilter filter;
 	u32 layer_count = 0;
+	VkImageType type{};
 	VkImageViewType view_type{};
 	u8 creation_flags = 0;
 };
@@ -135,7 +192,9 @@ struct lightray_vulkan_texture_metadata_t
 {
 	cstring_literal* path = nullptr;
 	VkFilter filter{};
+	VkSamplerAddressMode address_mode{};
 	u32 layer_count = 0;
+	// u32 shader_binding_index // relative to user metadata buffer layout
 };
 
 struct lightray_vulkan_raw_texture_buffer_t
@@ -157,10 +216,15 @@ struct lightray_vulkan_texture_t
 	VkFilter filter{};
 	VkImageLayout layout{};
 	VkImageAspectFlags aspect_flags = 0;
+	VkSamplerAddressMode address_mode{};
+	VkImageType type{};
+	VkImageViewType view_type{};
 	u32 vram_texture_arena_index = UINT32_MAX;
+	u32 sampler_index = 0;
 	i32 width = 0;
 	i32 height = 0;
 	u32 layer_count = 0;
+	// u32 bound_user_shader_index
 };
 
 struct lightray_vulkan_shader_t
@@ -177,13 +241,13 @@ struct lightray_vulkan_vram_arena_t
 	VkDeviceMemory device_memory = nullptr;
 	VkBuffer buffer;
 	u64* suballocation_offset_buffer = nullptr;
-	u64 alignment = 0;
 	u64 capacity = 0;
 	u64 current_offset = 0;
 	u64 max_suballocation_count = 0;
 	u64 suballocation_total_count = 0;
 	u64 suballocation_total_size_in_bytes = 0;
 	u32 vram_type_index = 0;
+	u32 alignment = 0;
 	VkMemoryPropertyFlags vram_property_flags = 0;
 };
 
@@ -197,29 +261,22 @@ struct lightray_vulkan_vram_arena_allocation_data_t
 	sunder_arena_t* metadata_arena = nullptr;
 };
 
-struct lightray_vulkan_game_resources_setup_data_t
-{
-	sunder_arena_t* arena = nullptr;
-	lightray_vulkan_static_mesh_metadata_t* static_mesh_metadata_buffer = nullptr;
-	lightray_vulkan_texture_metadata_t* texture_metadata_buffer = nullptr;
-	u32 mesh_count = 0;
-	u32 texture_count = 0;
-};
-
-// use this later in lightray_vulkan_setup_core function instead of lightray_vulkan_game_resources_setup_data_t and other goofy arguments
-struct lightray_vulkan_core_setup_data_t
+struct lightray_vulkan_core_initialization_data_t
 {
 	u32 window_width;
 	u32 window_height;
 	cstring_literal* window_title;
 	f32 target_fps; 
 	bool fullscreen_mode;
-
 	sunder_arena_t* arena = nullptr;
-	u64 arena_alignment = 0; // alignment at which the arena has been allocated with _aligned_malloc(). crucial for allocation/suballocation computations
-	lightray_vulkan_static_mesh_metadata_t* static_mesh_metadata_buffer = nullptr;
-	lightray_vulkan_texture_metadata_t* texture_metadata_buffer = nullptr;
-	u32 mesh_count = 0;
+	u32 arena_alignment = 0;
+	const lightray_vulkan_static_mesh_metadata_t* static_mesh_metadata_buffer = nullptr;
+	const lightray_vulkan_skeletal_mesh_metadata_t* skeletal_mesh_metadata_buffer = nullptr;
+	cstring_literal* const * animation_path_buffer = nullptr;
+	const lightray_vulkan_texture_metadata_t* texture_metadata_buffer = nullptr;
+	u32 animation_count = 0;
+	u32 static_mesh_count = 0;
+	u32 skeletal_mesh_count = 0; 
 	u32 texture_count = 0;
 };
 
@@ -227,11 +284,11 @@ struct lightray_vulkan_vram_texture_arena_t
 {
 	VkDeviceMemory device_memory = nullptr;
 
-	u64 alignment = 0;
 	u64 capacity = 0;
 	u64 current_offset = 0;
 	u64 suballocation_total_count = 0;
 	u64 suballocation_total_size_in_bytes = 0;
+	u32 alignment = 0;
 	u32 vram_type_index = 0;
 };
 
@@ -241,19 +298,25 @@ struct lightray_vulkan_runtime_texture_descriptor_indices_t
 	u32 image_descriptor_buffer_index = 0;
 };
 
-// architecture -> team fat struct (plex) )))))))))))))))))))))))))) (arena metabuffer instancing)
 struct lightray_vulkan_core_t
 {
 	cstring_literal* relative_path;
 
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	lightray_vulkan_vram_arena_t host_visible_vram_arena;
 	lightray_vulkan_vram_arena_t device_local_vram_arena;
+	lightray_vulkan_vram_arena_t host_visible_storage_vram_arena;
+
 	void* cpu_side_host_visible_vram_arena_view; // mapped with vkMapMemory
+	void* cpu_side_host_visible_storage_vram_arena_view; // mapped with vkMapMemory
+
 	sunder_arena_t general_purpose_ram_arena;
+
 	u64* host_visible_vram_arena_suballocation_starting_offsets;
 	u64* device_local_vram_arena_suballocation_starting_offsets;
 	u32 host_visible_vram_arena_suballocation_starting_offset_count;
 	u32 device_local_vram_arena_suballocation_starting_offset_count;		
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	lightray_vulkan_texture_t* texture_buffer;
@@ -264,86 +327,46 @@ struct lightray_vulkan_core_t
 	u32 sampler_count;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	/*f32 yaw;
-	f32 pitch;
-	f64 last_x;
-	f64 last_y;
-	bool first_camera_tick;
-	f64 pos_x;
-	f64 pos_y;
-	f32 camera_sensetivity;
-	glm::vec3 camera_position;
-	f32 camera_movement_speed;
-	f32 near_plane;
-	f32 far_plane;
-	f32 fov;*/
-
+	lightray_console_t console;
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	lightray_cvp_t cvp;
-	lightray_camera_t main_camera;
-	lightray_cursor_t cursor;
+	lightray_camera_t* camera_buffer;
+	u32 camera_count;
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	u32* wireframe_mesh_count_buffer;
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
+	//u32* wireframe_mesh_count_buffer;
+	lightray_vulkan_mesh_render_pass_data_t* mesh_render_pass_data_buffer;
+	u32* mesh_render_pass_data_mapping_buffer;
+	u32* mesh_render_pass_data_reordering_helper_buffer;
+	u32 untextured_mesh_count;
+	u32 textured_mesh_count;
 
-	//u32* cpu_side_index_count_buffer; // dont need to allocate
-	//u32* cpu_side_instance_model_count_buffer; // dont need to allocate
-	//u32* cpu_side_instance_model_to_render_count_buffer; // dont need to allocate
-
-	//u64* cpu_side_vertex_buffer_offsets; // dont need to allocate
-	//u32* cpu_side_index_buffer_offsets; // dont need to allocate
-	//u32* cpu_side_instance_model_buffer_offsets_per_mesh; // dont need to allocate
-	lightray_mesh_render_pass_data_t* mesh_render_pass_data_buffer;
-	u32* untextured_mesh_render_pass_data_index_buffer;
-	u32* textured_mesh_render_pass_data_index_buffer;
-	u32 untextured_mesh_render_pass_data_index_buffer_size;
-	u32 textured_mesh_render_pass_data_index_buffer_size;
+	lightray_vulkan_mesh_render_pass_data_buffer_indices_t static_mesh_render_pass_data_buffer_indices;
+	lightray_vulkan_mesh_render_pass_data_buffer_indices_t skeletal_mesh_render_pass_data_buffer_indices;
 
 	u64 cpu_side_vertex_buffer_offset_count;
 	u32 cpu_side_index_buffer_offset_count;
-	u32 mesh_count;
+	u32 total_mesh_count;
+	u32 total_static_mesh_count;
+	u32 total_skeletal_mesh_count;
 
 	lightray_vertex_t* cpu_side_vertex_buffer;
 	u32* cpu_side_index_buffer;
 	u32 index_count;
 	u64 vertex_count;
-	f32 delta_time;
-	VkImageView texture_image_view;
 	u32 cpu_side_instance_count;
 	u32 cpu_side_instance_model_buffer_count;
 	lightray_render_instance_t* cpu_side_render_instance_buffer;
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-	/////////////////// animation data ////////////////////////
-	glm::mat4* bone_local_transform_matrix_buffer; // per mesh
-	u32* bone_local_transform_matrix_offset_buffer; // per mesh
-
-	glm::mat4* parent_bone_transform_matrix_buffer; // per mesh
-	u32* parent_bone_transform_matrix_offset_buffer; // per mesh
-
-	glm::mat4* bone_offset_matrix_buffer; // per bone / inverse bind pose
-	u32* bone_offset_matrix_offset_buffer; // per mesh
-
-	u32* bone_vertex_id_buffer; // per bone
-	u32* bone_vertex_id_offset_buffer; // per bone
-	u32* bone_vertex_id_count_buffer; // per bone
-
-	f32* bone_vertex_weight_buffer; //  per bone
-	u32* bone_vertex_weight_offset_buffer; // per bone
-	u32* bone_vertex_weight_count_buffer; // per bone
-
-	aiNodeAnim* animation_channel_buffer; // per animation
-	u32* animation_channel_offset_buffer; // per animation
-	u32* animation_channel_count_buffer; // per animation
-
-	f64* animation_duration_buffer; // per animation
-	f64* animation_ticks_per_second_buffer;
-
-	glm::mat4* computed_bone_transform_matrix_buffer;
-
-	u32* bone_count_buffer; // per mesh
-	u32 total_bone_count;
-	/////////////////// animation data ////////////////////////
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
+	lightray_animation_core_t animation_core;
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 			 
 	////////////////////////////////////////// game resources ///////////////////////////////////////
 	///////////////////////////////////////// common /////////////////////////////////////////////////
+	f32 delta_time;
 	f32 initial_time;
 	f32 current_time;
 	f32 frame_duration_s;
@@ -363,7 +386,6 @@ struct lightray_vulkan_core_t
 	VkSwapchainCreateInfoKHR swapchain_info;
 	VkApplicationInfo application_info;
 	VkInstanceCreateInfo instance_info;
-	VkWin32SurfaceCreateInfoKHR win32_surface_info;
 	VkDeviceCreateInfo logical_device_info;
 	VkPhysicalDeviceProperties gpu_properties;
 	VkPhysicalDeviceFeatures gpu_features;
@@ -375,19 +397,20 @@ struct lightray_vulkan_core_t
 	u32 queue_family_indices_in_use[LIGHTRAY_MAX_QUEUES_IN_USE_COUNT];
 	VkSurfaceFormatKHR chosen_surface_format;
 	VkPresentModeKHR chosen_swapchain_present_mode;
-	lightray_vulkan_shader_t shaders[4];
-	//VkShaderModule static_mesh_vertex_shader_module;
-	//VkShaderModule static_mesh_fragment_shader_module;
-	//VkShaderModuleCreateInfo static_mesh_vertex_shader_module_info;
-	//VkShaderModuleCreateInfo static_mesh_fragment_shader_module_info;
-	//VkPipelineShaderStageCreateInfo static_mesh_pipeline_vertex_shader_stage_info;
-	//VkPipelineShaderStageCreateInfo static_mesh_pipeline_fragment_shader_stage_info;
-	VkPipelineShaderStageCreateInfo pipeline_shader_stage_infos[4];
+	lightray_vulkan_shader_t shaders[LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT];
+	VkPipelineShaderStageCreateInfo pipeline_shader_stage_infos[LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT];
 	VkDynamicState dynamic_states[LIGHTRAY_DYNAMIC_STATE_COUNT];
 	VkPipelineDynamicStateCreateInfo pipeline_dynamic_state_info;
 	VkVertexInputBindingDescription vertex_input_binding_descriptions[2];
-	VkVertexInputAttributeDescription vertex_input_attribute_descriptions[9];
-	VkPipelineVertexInputStateCreateInfo pipeline_vertex_input_state_infos[2];
+
+	//
+	VkVertexInputAttributeDescription static_mesh_vertex_attribute_descriptions[6];
+	VkVertexInputAttributeDescription textured_static_mesh_vertex_attribute_descriptions[8];
+	VkVertexInputAttributeDescription skeletal_mesh_vertex_attribute_descriptions[9];
+	VkVertexInputAttributeDescription textured_skeletal_mesh_vertex_attribute_description[11];
+	//
+
+	VkPipelineVertexInputStateCreateInfo pipeline_vertex_input_state_infos[3];
 	VkPipelineInputAssemblyStateCreateInfo pipeline_input_assembly_state_infos[2];
 	VkViewport viewport;
 	VkRect2D scissor;
@@ -396,8 +419,8 @@ struct lightray_vulkan_core_t
 	VkPipelineMultisampleStateCreateInfo pipeline_multisample_state_info;
 	VkPipelineColorBlendAttachmentState pipeline_color_blend_attachment_state;
 	VkPipelineColorBlendStateCreateInfo pipeline_color_blend_state_info;
-	VkPipelineLayout pipeline_layouts[2];
-	VkPipeline pipelines[3];
+	VkPipelineLayout pipeline_layouts[1];
+	VkPipeline pipelines[4];
 	VkCommandPool command_pool;
 	VkPipelineLayoutCreateInfo pipeline_layout_infos[2];
 	VkAttachmentDescription attachment_description;
@@ -405,25 +428,27 @@ struct lightray_vulkan_core_t
 	VkSubpassDescription subpass_description;
 	VkSubpassDependency subpass_dependency;
 	VkRenderPassCreateInfo render_pass_info;
-	VkGraphicsPipelineCreateInfo graphics_pipeline_infos[3];
+	VkGraphicsPipelineCreateInfo graphics_pipeline_infos[4];
 	VkCommandPoolCreateInfo command_pool_info;
 	VkCommandBufferAllocateInfo render_command_buffers_allocate_info;
 	VkCommandBufferAllocateInfo general_purpose_command_buffer_allocate_info;
 	VkSemaphoreCreateInfo semaphore_info;
 	VkFenceCreateInfo inflight_fence_info;
-			//
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	VkDescriptorSet* descriptor_sets;
 	VkDescriptorSetAllocateInfo descriptor_set_allocate_info;
 	VkDescriptorPool descriptor_pool;
 	VkDescriptorPoolCreateInfo descriptor_pool_info;
-	VkDescriptorPoolSize descriptor_pool_sizes[2];
+	VkDescriptorPoolSize descriptor_pool_sizes[4];
 	VkDescriptorSetLayout main_descriptor_set_layout;
 	VkDescriptorSetLayout* copy_descriptor_set_layouts;
 	VkDescriptorSetLayoutCreateInfo descriptor_set_layout_info;
-	VkDescriptorSetLayoutBinding descriptor_set_layout_bindings[2];
-	VkDescriptorBufferInfo descriptor_buffer_info;
+	VkDescriptorSetLayoutBinding descriptor_set_layout_bindings[4];
+	VkDescriptorBufferInfo descriptor_buffer_infos[3];
 	VkDescriptorImageInfo* descriptor_combined_sampler_infos;
-			//
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 	VkCommandBufferBeginInfo render_command_buffers_begin_info;
 	VkCommandBufferBeginInfo general_purpose_command_buffer_begin_info;
 	VkRenderPassBeginInfo render_pass_begin_info;
@@ -438,8 +463,6 @@ struct lightray_vulkan_core_t
 	VkImageView* swapchain_image_views;
 	VkImageViewCreateInfo swapchain_image_view_info;
 	VkFramebuffer* swapchain_framebuffers;
-	//i8* static_mesh_vertex_shader_byte_code; 
-	//i8* static_mesh_fragment_shader_byte_code;
 	VkSurfaceFormatKHR* supported_surface_formats;
 	VkPresentModeKHR* supported_swapchain_present_modes; 
 	VkQueueFamilyProperties* supported_queue_family_properties; 
@@ -481,6 +504,14 @@ struct lightray_vulkan_move_entity_data_t
 	lightray_scene_t* scene = nullptr;
 };
 
+struct lightray_vulkan_core_tick_end_data_t
+{
+	lightray_scene_t* scene = nullptr;
+	sunder_buffer_copy_data_t cvp_copy_data{};
+	sunder_buffer_copy_data_t instance_model_buffer_copy_data{};
+	sunder_buffer_copy_data_t computed_bone_matrix_buffer_copy_data{};
+};
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //																																				EXTERNAL API FUNCTIONS																																												 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -488,18 +519,38 @@ struct lightray_vulkan_move_entity_data_t
 void																				lightray_vulkan_set_target_fps(lightray_vulkan_core_t* core, f32 desired_fps);
 void																				lightray_vulkan_uncap_fps(lightray_vulkan_core_t* core);
 bool																				lightray_vulkan_is_fps_capped(const lightray_vulkan_core_t* core);
-void																				lightray_vulkan_setup_core(lightray_vulkan_core_t* core, lightray_vulkan_core_setup_data_t* setup_data);
+void																				lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightray_vulkan_core_initialization_data_t* initialization_data);
 void																				lightray_vulkan_terminate_core(lightray_vulkan_core_t* core);
-void																				lightray_vulkan_set_fov(lightray_vulkan_core_t* core, f32 desired_fov);
+void																				lightray_vulkan_set_camera_fov(lightray_vulkan_core_t* core, u32 camera_index, f32 desired_fov);
 void																				lightray_vulkan_hide_entity(lightray_vulkan_core_t* core, u32 entity_index, lightray_scene_t* scene);
 void																				lightray_vulkan_unhide_entity(lightray_vulkan_core_t* core, u32 entity_index, lightray_scene_t* scene);
 void																				lightray_vulkan_move_entity(lightray_vulkan_move_entity_data_t* move_data);
+void																				lightray_vulkan_initialize_core_tick_end_data(lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_vulkan_core_tick_end_data_t* tick_data);
 void																				lightray_vulkan_tick_core_begin(lightray_vulkan_core_t* core);
-void																				lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core);
+void																				lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_vulkan_core_tick_end_data_t* tick_data);
 void																				lightray_vulkan_set_relative_path(lightray_vulkan_core_t* core, cstring_literal* path);
-u64																				lightray_vulkan_compute_required_user_chosen_arena_suballocation_size(u32 mesh_count, u32 texture_count, u32 alignment);
-void																				lightray_vulkan_execute_main_render_pass(lightray_vulkan_core_t* core, u32 flags);
+u64																				lightray_vulkan_compute_required_user_chosen_arena_suballocation_size(u32 mesh_count, u32 texture_count, u32 animation_count, u32 alignment);
+void																				lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags);
+lightray_vulkan_result													lightray_vulkan_bind_texture(lightray_vulkan_core_t* core, u32 mesh_index, u32 texture_index);
+lightray_vulkan_result													lightray_vulkan_execute_pre_render_pass_buffer_reorder(lightray_vulkan_core_t* core);
+void																				lightray_vulkan_log_mesh_render_pass_data_mapping_buffer(const lightray_vulkan_core_t* core);
+void																				lightray_vulkan_populate_mesh_binding_offset_buffer(const lightray_vulkan_core_t* core, lightray_scene_t* scene);
 
+																					// size can be left 0 for each mesh type and in that case nullptr can be passed as buffers safely. however, if size is > 0, the validity of the pointer will not be checked, because fuck you
+u32																				lightray_vulkan_get_total_mesh_instance_count(const lightray_vulkan_static_mesh_metadata_t* static_mesh_metadata_buffer, u32 static_mesh_count, const lightray_vulkan_skeletal_mesh_metadata_t* skeletal_mesh_metadata_buffer, u32 skeletal_mesh_count);
+void																				lightray_vulkan_set_camera_clip_plane(lightray_vulkan_core_t* core, u32 camera_index, f32 near_plane, f32 far_plane);
+lightray_camera_t	*														lightray_vulkan_get_main_3d_camera(const lightray_vulkan_core_t* core);
+lightray_camera_t*														lightray_vulkan_get_camera_at_index(const lightray_vulkan_core_t* core, u32 camera_index);
+
+u32																				lightray_vulkan_issue_animation_playback_command(lightray_vulkan_core_t* core, u32 animation_index, u32 skeleton_index, u32 instance_index, bool loop);
+void																				lightray_vulkan_withdraw_animation_playback_command(lightray_vulkan_core_t* core, u32 playback_command_index);
+void																				lightray_vulkan_flush_animation_playback_command_buffer(lightray_vulkan_core_t* core);
+void																				lightray_vulkan_set_animation_playback_scale(lightray_vulkan_core_t* core, u32 playback_command_index, f32 scale);
+lightray_vulkan_result													lightray_vulkan_play_animation(lightray_vulkan_core_t* core, u32 playback_command_index);
+void																				lightray_vulkan_apply_bind_pose(lightray_vulkan_core_t* core, u32 skeleton_index, u32 instance_index);
+
+																					// returns a structure with runtime, setup time indices for access
+lightray_vulkan_runtime_asset_loading_result_t			lightray_vulkan_load_asset_runtime(lightray_vulkan_core_t* core, const lightray_vulkan_runtime_asset_loading_data_t* loading_data);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //																																				INTERNAL API FUNCTIONS																																												 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -530,20 +581,33 @@ void																				lightray_vulkan_free_swapchain_framebuffers(lightray_vul
 void																				lightray_vulkan_copy_buffer(lightray_vulkan_core_t* core, VkBuffer dst, VkBuffer src, u64 dst_offset, u64 src_offset, u64 size);
 
 																					// returns VK_FORMAT_UNDEFINED on failure
-VkFormat																		lightray_vulkan_get_supported_image_format(VkPhysicalDevice gpu, VkFormat* formats, u32 format_count, VkImageTiling tiling, VkFormatFeatureFlags features, VkImageUsageFlags usage, VkFormat prefered_format);
+VkFormat																		lightray_vulkan_get_supported_image_format(VkPhysicalDevice gpu, const VkFormat* formats, u32 format_count, VkImageTiling tiling, VkImageType type, VkFormatFeatureFlags features, VkImageUsageFlags usage, VkFormat prefered_format);
 bool																				lightray_vulkan_is_format_supported(VkPhysicalDevice gpu, VkFormat format);
 
 lightray_vulkan_result													lightray_vulkan_create_shader(lightray_vulkan_core_t* core, lightray_vulkan_shader_t* shader, VkShaderStageFlagBits stage_flags);
 lightray_vulkan_result													lightray_vulkan_free_shader(lightray_vulkan_core_t* core, lightray_vulkan_shader_t* shader);
+lightray_vulkan_result													lightray_vulkan_bind_shader(lightray_vulkan_core_t* core, u32 shader_index, u32 texture_index);
 
 lightray_vulkan_result													lightray_vulkan_load_texture(cstring_literal* path, lightray_vulkan_texture_t* texture);
 lightray_vulkan_result													lightray_vulkan_create_texture(lightray_vulkan_core_t* core, lightray_vulkan_texture_t* texture, const lightray_vulkan_texture_creation_data_t* creation_data);
 void																				lightray_vulkan_transition_texture_layout(VkQueue queue, VkCommandBuffer command_buffer, const VkCommandBufferBeginInfo* command_buffer_begin_info, lightray_vulkan_texture_t* texture, VkImageLayout new_layout);
 void																				lightray_vulkan_populate_texture(lightray_vulkan_texture_t* texture, const lightray_vulkan_texture_population_data_t* population_data);
 lightray_vulkan_result													lightray_vulkan_free_texture(lightray_vulkan_core_t* core, lightray_vulkan_texture_t* texture, u8 free_flags);
-lightray_vulkan_result													lightray_vulkan_allocate_vram_texture_arena_debug(lightray_vulkan_core_t* core, lightray_vulkan_vram_texture_arena_t* arena, u64 allocation_size, u64 alignment, u32 vram_type_index);
+lightray_vulkan_result													lightray_vulkan_allocate_vram_texture_arena_debug(lightray_vulkan_core_t* core, lightray_vulkan_vram_texture_arena_t* arena, u64 allocation_size, u32 alignment, u32 vram_type_index);
 lightray_vulkan_result													lightray_vulkan_suballocate_texture(lightray_vulkan_core_t* core, lightray_vulkan_vram_texture_arena_t* arena, lightray_vulkan_texture_t* texture, u64 texture_size);
 lightray_vulkan_result													lightray_vulkan_free_vram_texture_arena(lightray_vulkan_core_t* core, lightray_vulkan_vram_texture_arena_t* arena);
 
 void																				lightray_vulkan_begin_command_buffer_recording(VkCommandBuffer command_buffer, const VkCommandBufferBeginInfo* begin_info);
 void																				lightray_vulkan_end_command_buffer_recording(VkCommandBuffer command_buffer, VkQueue queue);
+
+bool																				lightray_vulkan_quick_sort_compare_texture_index_less_mesh_render_pass_data(const lightray_vulkan_mesh_render_pass_data_t* i, const lightray_vulkan_mesh_render_pass_data_t* j);
+
+SUNDER_DEFINE_QUICK_SORT_PARTITION_FUNCTION(lightray_vulkan_mesh_render_pass_data_t, mesh_render_pass_data, lightray_vulkan)
+SUNDER_DEFINE_QUICK_SORT_FUNCTION(lightray_vulkan_mesh_render_pass_data_t, mesh_render_pass_data, lightray_vulkan)
+
+SUNDER_DEFINE_EXISTS_FUNCTION(VkFilter, lightray_vulkan, vk_filter, u32)
+
+SUNDER_DEFINE_QUERY_BUFFER_INDEX_FUNCTION(VkFilter, lightray_vulkan, vk_filter, u32)
+
+void																				lightray_vulkan_log_mesh_render_pass_data_buffer(const lightray_vulkan_core_t* core);
+u32																				lightray_vulkan_swap_meshes_inplace(lightray_vulkan_mesh_render_pass_data_t* mesh_render_pass_data_buffer, u32 i, u32* dst_index, u32 starting_index, u32 range, lightray_vulkan_mesh_render_type render_type, bool textured);
