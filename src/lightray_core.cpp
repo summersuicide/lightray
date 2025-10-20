@@ -71,7 +71,6 @@ bool lightray_key_down(GLFWwindow* window, lightray_key_binding key)
 	}
 
 	return false;
-
 }
 
 bool lightray_mouse_button_pressed(GLFWwindow* window, lightray_key_binding mouse_button, u8* key_tick_data)
@@ -96,13 +95,34 @@ bool lightray_mouse_button_pressed(GLFWwindow* window, lightray_key_binding mous
 	return false;
 }
 
-glm::mat4 lightray_construct_projection_matrix(f32 desired_fov, f32 aspect_ratio, f32 near_plane, f32 far_plane)
+glm::mat4 lightray_construct_perspective_projection_matrix(f32 desired_fov, f32 aspect_ratio, f32 near_plane, f32 far_plane, bool vulkan_y_flip)
 {
 	glm::mat4 projection{};
 	const f32 desired_fov_clamped = glm::clamp(desired_fov, 40.0f, 170.0f);
 
 	projection = glm::perspectiveRH_ZO(glm::radians(desired_fov_clamped), aspect_ratio, near_plane, far_plane);
-	projection[1][1] *= -1;
+
+	if (vulkan_y_flip)
+	{
+		projection[1][1] *= -1;
+	}
+
+	return projection;
+}
+
+glm::mat4 lightray_construct_orthographic_projection_matrix(f32 left, f32 right, f32 bottom, f32 top, f32 near_plane, f32 far_plane, bool vulkan_y_flip)
+{
+	glm::mat4 projection{};
+
+	if (vulkan_y_flip)
+	{
+		projection = glm::orthoRH(left, right, top, bottom, near_plane, far_plane);
+	}
+
+	else
+	{
+		projection = glm::orthoRH(left, right, bottom, top, near_plane, far_plane);
+	}
 
 	return projection;
 }
@@ -1456,4 +1476,107 @@ glm::vec2 lightray_get_cursor_position(GLFWwindow* window)
 	glfwGetCursorPos(window, &x, &y);
 
 	return glm::vec2(x, y);
+}
+
+void lightray_load_json_garbage()
+{
+	FILE* file = nullptr;
+	fopen_s(&file, "resources/ShareTech-Regular_layout.json", "rb");
+
+	if (file != nullptr)
+	{
+		fseek(file, 0, SEEK_END);
+
+		const u64 file_size = ftell(file);
+		rewind(file);
+
+		i8* buffer = (i8*)sunder_aligned_halloc(file_size + 1, 8);
+
+		const u64 bytes_read = fread(buffer, 1, file_size, file);
+		buffer[file_size] = 0;
+
+		fclose(file);
+
+		cJSON* root = cJSON_Parse(buffer);
+
+		const cJSON* atlas = cJSON_GetObjectItem(root, "atlas");
+		const cJSON* metrics = cJSON_GetObjectItem(root, "metrics");
+		const cJSON* glyphs = cJSON_GetObjectItem(root, "glyphs");
+
+		const i32 size = cJSON_GetObjectItem(atlas, "size")->valueint;
+		const i32 width = cJSON_GetObjectItem(atlas, "width")->valueint;
+		const i32 height = cJSON_GetObjectItem(atlas, "height")->valueint;
+
+		const i32 em_size = cJSON_GetObjectItem(metrics, "emSize")->valueint;
+		const f64 base_line_height = cJSON_GetObjectItem(metrics, "lineHeight")->valuedouble;
+		const f64 ascender = cJSON_GetObjectItem(metrics, "ascender")->valuedouble;
+		const f64 descender = cJSON_GetObjectItem(metrics, "descender")->valuedouble;
+
+		const i32 glyph_count = cJSON_GetArraySize(glyphs);
+
+		SUNDER_LOG("\n=======================================");
+
+		for (i32 i = 0; i < glyph_count; i++)
+		{
+			const cJSON* glyph = cJSON_GetArrayItem(glyphs, i);
+			const i32 index = cJSON_GetObjectItem(glyph, "index")->valueint;
+			const f64 advance = cJSON_GetObjectItem(glyph, "advance")->valuedouble;
+
+			const cJSON* plane_bounds = cJSON_GetObjectItem(glyph, "planeBounds");
+			const cJSON* atlas_bounds = cJSON_GetObjectItem(glyph, "atlasBounds");
+
+			SUNDER_LOG("\nindex: ");
+			SUNDER_LOG(index);
+			SUNDER_LOG("\nadvance: ");
+			SUNDER_LOG(advance);
+
+			if (plane_bounds != nullptr)
+			{
+				const f64 plane_bounds_left = cJSON_GetObjectItem(plane_bounds, "left")->valuedouble;
+				const f64 plane_bounds_right = cJSON_GetObjectItem(plane_bounds, "right")->valuedouble;
+				const f64 plane_bounds_top = cJSON_GetObjectItem(plane_bounds, "top")->valuedouble;
+				const f64 plane_bounds_bottom = cJSON_GetObjectItem(plane_bounds, "bottom")->valuedouble;
+
+				SUNDER_LOG("\n\nplane_bounds ");
+				SUNDER_LOG("\nleft: ");
+				SUNDER_LOG(plane_bounds_left);
+				SUNDER_LOG("\nright: ");
+				SUNDER_LOG(plane_bounds_right);
+				SUNDER_LOG("\ntop: ");
+				SUNDER_LOG(plane_bounds_top);
+				SUNDER_LOG("\nbottom: ");
+				SUNDER_LOG(plane_bounds_bottom);
+			}
+
+			if (atlas_bounds != nullptr)
+			{
+				const f64 atlas_bounds_left = cJSON_GetObjectItem(atlas_bounds, "left")->valuedouble;
+				const f64 atlas_bounds_right = cJSON_GetObjectItem(atlas_bounds, "right")->valuedouble;
+				const f64 atlas_bounds_top = cJSON_GetObjectItem(atlas_bounds, "top")->valuedouble;
+				const f64 atlas_bounds_bottom = cJSON_GetObjectItem(atlas_bounds, "bottom")->valuedouble;
+
+				SUNDER_LOG("\n\natlas_bounds ");
+				SUNDER_LOG("\nleft: ");
+				SUNDER_LOG(atlas_bounds_left);
+				SUNDER_LOG("\nright: ");
+				SUNDER_LOG(atlas_bounds_right);
+				SUNDER_LOG("\ntop: ");
+				SUNDER_LOG(atlas_bounds_top);
+				SUNDER_LOG("\nbottom: ");
+				SUNDER_LOG(atlas_bounds_bottom);
+			}
+
+			SUNDER_LOG("\n=======================================\n");
+		}
+
+		cJSON_Delete(root);
+		sunder_aligned_free(SUNDER_PRE_FREE_CAST(buffer));
+	}
+}
+
+i32 lightray_get_file_size(cstring_literal* path)
+{
+	struct _stat st {};
+	const i32 st_file_result = _stat(path, &st);
+	return st.st_size;
 }
