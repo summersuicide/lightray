@@ -18,27 +18,53 @@
 #define LIGHTRAY_ENABLED_INSTANCE_LAYER_COUNT 1U
 #define LIGHTRAY_ENABLED_DEVICE_EXTENSION_COUNT 1U
 #define LIHGTRAY_VERTEX_INPUT_ATTRIBUTE_DESCRIPTION_COUNT 2U
+
 #define LIGHTRAY_VULKAN_UNIFORM_BUFFER_ALIGNMENT 256U
 #define LIGHTRAY_VULKAN_VERTEX_BUFFER_ALIGNMENT 16U
 #define LIGHTRAY_VULKAN_INDEX_BUFFER_ALIGNMENT 4U
 #define LIGHTRAY_VULKAN_STATIC_STORAGE_BUFFER_ALIGNMENT 16u
 #define LIGHTRAY_VULKAN_DYNAMIC_STORAGE_BUFFER_ALIGNMENT 256u
-#define LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_VERTEX_BUFFER_INDEX 0U
-#define LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_INDEX_BUFFER_INDEX 1U
-#define LIGHTRAY_VULKAN_HOSI_VISIBLE_VRAM_ARENA_VERTEX_BUFFER_INDEX 0U
-#define LIGHTRAY_VULKAN_HOSI_VISIBLE_VRAM_ARENA_INDEX_BUFFER_INDEX 1U
-#define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_INDEX 2U
-#define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_INSTANCE_MODEL_BUFFER_INDEX 3U
-#define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_TEXTURE_BUFFER_STARTING_INDEX 4U
-#define LIGHTRAY_VULKAN_STATIC_MESH_VERTEX_SHADER_INDEX 0U
-#define LIGHTRAY_VULKAN_STATIC_MESH_FRAGMENT_SHADER_INDEX 1U
-#define LIGHTRAY_VULKAN_SKELETAL_MESH_VERTEX_SHADER_INDEX 2U
-#define LIGHTRAY_VULKAN_SKELETAL_MESH_FRAGMENT_SHADER_INDEX 3U
+
+#define LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_VERTEX_BUFFER_INDEX 0u
+#define LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_INDEX_BUFFER_INDEX 1u
+
+#define LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_BUFFER_STARTING_INDEX 0u
+
+#define LIGHTRAY_VULKAN_UNTEXTURED_STATIC_MESH_SHADER_SET_STARTING_INDEX 0u
+#define LIGHTRAY_VULKAN_TEXTURED_STATIC_MESH_SHADER_SET_STARTING_INDEX 2u
+
+#define LIGHTRAY_VULKAN_UNTEXTURED_SKELETAL_MESH_SHADER_SET_STARTING_INDEX 4u
+#define LIGHTRAY_VULKAN_TEXTURED_SKELETAL_MESH_SHADER_SET_STARTING_INDEX 6u
+
+#define LIGHTRAY_VULKAN_UNTEXTURED_STATIC_MESH_VERTEX_SHADER_INDEX 0u
+#define LIGHTRAY_VULKAN_UNTEXTURED_STATIC_MESH_FRAGMENT_SHADER_INDEX 1u
+#define LIGHTRAY_VULKAN_TEXTURED_STATIC_MESH_VERTEX_SHADER_INDEX 2u
+#define LIGHTRAY_VULKAN_TEXTURED_STATIC_MESH_FRAGMENT_SHADER_INDEX 3u
+
+#define LIGHTRAY_VULKAN_UNTEXTURED_SKELETAL_MESH_VERTEX_SHADER_INDEX 4u
+#define LIGHTRAY_VULKAN_UNTEXTURED_SKELETAL_MESH_FRAGMENT_SHADER_INDEX 5u
+#define LIGHTRAY_VULKAN_TEXTURED_SKELETAL_MESH_VERTEX_SHADER_INDEX 6u
+#define LIGHTRAY_VULKAN_TEXTURED_SKELETAL_MESH_FRAGMENT_SHADER_INDEX 7u
+
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_INDEX 2048u
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_LAYER_INDEX 256
-#define LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT 6u
+#define LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT 8u
+#define LIGHTRAY_VULKAN_ALIGNED_ALLOCATION_SIZE_BUFFER_LENGTH 48u
+#define LIGHTRAY_VULKAN_INVALUD_BATCH_INDEX 6144u
 
 SUNDER_DEFINE_BUFFER_INDEX_QUERY_RESULT_STRUCTURE(VkFilter, lightray_vulkan, vk_filter, u32)
+
+struct lightray_vulkan_texture_sampler_metadata_t
+{
+	VkFilter filter{};
+	VkSamplerAddressMode address_mode{};
+};
+
+enum lightray_vulkan_bits : u64
+{
+	LIGHTRAY_VULKAN_BITS_PERSPECTIVE_CAMERA_BOUND_BIT = 32ull,
+	LIGHTRAY_VULKAN_BITS_OVERLAY_CAMERA_BOUND_BIT = 33ull
+};
 
 enum lightray_vulkan_mesh_render_type : u32
 {
@@ -60,12 +86,14 @@ struct lightray_vulkan_shader_metadata_t
 	VkShaderStageFlagBits stage{};
 };
 
-enum lightray_vulkan_core_setup_bits : u8
+enum lightray_vulkan_core_initialization_bits : u32
 {
-	LIGHTRAY_VULKAN_CORE_SETUP_BITS_TEXTURES_PRESENT_BIT = 0,
-	LIGHTRAY_VULKAN_CORE_SETUP_BITS_SKELETAL_MESHES_PRESENT_BIT = 1,
-	LIGHTRAY_VULKAN_CORE_SETUP_BITS_STATIC_MESHES_PRESENT_BIT = 2,
-	LIGHTRAY_VULKAN_CORE_SETUP_BITS_ANIMATIONS_PRESENT_BIT = 3
+	LIGHTRAY_VULKAN_CORE_INITIALIZATION_BITS_TEXTURES_PRESENT_BIT = 0u,
+	LIGHTRAY_VULKAN_CORE_INITIALIZATION_BITS_SKELETAL_MESHES_PRESENT_BIT = 1u,
+	LIGHTRAY_VULKAN_CORE_INITIALIZATION_BITS_STATIC_MESHES_PRESENT_BIT = 2u,
+	LIGHTRAY_VULKAN_CORE_INITIALIZATION_BITS_ANIMATIONS_PRESENT_BIT = 3u,
+	LIGHTRAY_VULKAN_CORE_INITIALIZATION_BITS_CAMERAS_PRESENT_BIT = 4u,
+	LIGHTRAY_VULKAN_CORE_INITIALIZATION_BITS_2D_MODE = 5u
 };
 
 // used for grouping unrelated meshes that have the same number of instances, together in one batch. gathered at runtime
@@ -79,6 +107,7 @@ struct lightray_vulkan_static_mesh_metadata_t
 	cstring_literal* path = nullptr;
 	u32 instance_count = 0;
 	u32 wireframe_count = 0; // how many instances of this mesh will be rendered in wireframe
+	// u32 batch_index = LIGHTRAY_VULKAN_INVALUD_BATCH_INDEX; // agressive vertex batching can be done only on import, requires all meshes to have instance count
 };
 
 struct lightray_vulkan_skeletal_mesh_metadata_t
@@ -161,6 +190,13 @@ enum lightray_vulkan_texture_free_bits : u8
 	LIGHTRAY_VULKAN_TEXTURE_FREE_BITS_VIEW_BIT = 2
 };
 
+enum lightray_vulkan_texture_kind : u32
+{
+	LIGHTRAY_VULKAN_TEXTURE_KIND_MESH_TEXTURE = 0u,
+	LIGHTRAY_VULKAN_TEXTURE_KIND_DEPTH_TEXTURE = 1u,
+	LIGHTRAY_VULKAN_TEXTURE_KIND_MSDF_FONT_ATLAS_TEXTURE = 2u
+};
+
 struct lightray_vulkan_texture_creation_data_t
 {
 	i32 width = 0;
@@ -174,6 +210,7 @@ struct lightray_vulkan_texture_creation_data_t
 	u32 layer_count = 0;
 	VkImageType type{};
 	VkImageViewType view_type{};
+	lightray_vulkan_texture_kind kind{};
 	u8 creation_flags = 0;
 };
 
@@ -224,6 +261,7 @@ struct lightray_vulkan_texture_t
 	i32 width = 0;
 	i32 height = 0;
 	u32 layer_count = 0;
+	lightray_vulkan_texture_kind kind{};
 	// u32 bound_user_shader_index
 };
 
@@ -274,10 +312,14 @@ struct lightray_vulkan_core_initialization_data_t
 	const lightray_vulkan_skeletal_mesh_metadata_t* skeletal_mesh_metadata_buffer = nullptr;
 	cstring_literal* const * animation_path_buffer = nullptr;
 	const lightray_vulkan_texture_metadata_t* texture_metadata_buffer = nullptr;
+	cstring_literal* const* msdf_font_atlas_path_buffer = nullptr;
 	u32 animation_count = 0;
 	u32 static_mesh_count = 0;
 	u32 skeletal_mesh_count = 0; 
 	u32 texture_count = 0;
+	u32 camera_count = 0;
+	u32 animation_playback_command_count = 0;
+	u32 msdf_font_atlas_count = 0;
 };
 
 struct lightray_vulkan_vram_texture_arena_t
@@ -315,23 +357,34 @@ struct lightray_vulkan_core_t
 	u64* host_visible_vram_arena_suballocation_starting_offsets;
 	u64* device_local_vram_arena_suballocation_starting_offsets;
 	u32 host_visible_vram_arena_suballocation_starting_offset_count;
-	u32 device_local_vram_arena_suballocation_starting_offset_count;		
+	u32 device_local_vram_arena_suballocation_starting_offset_count;	
+
+	u32 host_visible_vram_arena_vertex_buffer_starting_index;
+	u32 host_visible_vram_arena_index_buffer_starting_index;
+	u32 host_visible_vram_arena_render_instance_buffer_starting_index;
+	u32 host_visible_vram_arena_render_instance_glyph_buffer_starting_index;
+	u32 host_visible_vram_arena_staging_texture_buffer_starting_index;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	lightray_vulkan_texture_t* texture_buffer;
 	lightray_vulkan_vram_texture_arena_t* vram_texture_arena_buffer;
 	VkSampler* sampler_buffer;
-	u32 texture_count;
-	u32 vram_texture_arena_count;
-	u32 sampler_count;
+	u32 total_texture_count;
+	u32 total_texture_count_including_depth_texture;
+	u32 depth_texture_index;
+	u32 total_vram_texture_arena_count;
+	u32 total_sampler_count;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	lightray_console_t console;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
-	lightray_cvp_t cvp;
+	lightray_cvp_t* cvp_buffer;
 	lightray_camera_t* camera_buffer;
-	u32 camera_count;
+	u32 perspective_camera_dynamic_offset;
+	u32 overlay_camera_dynamic_offset;
+	u32 total_camera_count;
+	u32 bound_perspective_camera_index;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -363,9 +416,14 @@ struct lightray_vulkan_core_t
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 	lightray_animation_core_t animation_core;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
-			 
+	lightray_overlay_core_t overlay_core;
+	u64 overlay_vertex_subbuffer_offset;
+	u64 overlay_vertex_count;
+	u32 overlay_index_subbuffer_offset;
+	u32 overlay_index_count;
 	////////////////////////////////////////// game resources ///////////////////////////////////////
 	///////////////////////////////////////// common /////////////////////////////////////////////////
+	u32 draw_call_count;
 	f32 delta_time;
 	f32 initial_time;
 	f32 current_time;
@@ -402,25 +460,27 @@ struct lightray_vulkan_core_t
 	VkDynamicState dynamic_states[LIGHTRAY_DYNAMIC_STATE_COUNT];
 	VkPipelineDynamicStateCreateInfo pipeline_dynamic_state_info;
 	VkVertexInputBindingDescription vertex_input_binding_descriptions[2];
+	VkVertexInputBindingDescription overlay_vertex_input_binding_descriptions[2];
 
 	//
 	VkVertexInputAttributeDescription static_mesh_vertex_attribute_descriptions[6];
 	VkVertexInputAttributeDescription textured_static_mesh_vertex_attribute_descriptions[8];
 	VkVertexInputAttributeDescription skeletal_mesh_vertex_attribute_descriptions[9];
-	VkVertexInputAttributeDescription textured_skeletal_mesh_vertex_attribute_description[11];
+	VkVertexInputAttributeDescription textured_skeletal_mesh_vertex_attribute_descriptions[11];
+	VkVertexInputAttributeDescription overlay_vertex_attribute_descriptions[9];
 	//
 
-	VkPipelineVertexInputStateCreateInfo pipeline_vertex_input_state_infos[3];
+	VkPipelineVertexInputStateCreateInfo pipeline_vertex_input_state_infos[4];
 	VkPipelineInputAssemblyStateCreateInfo pipeline_input_assembly_state_infos[2];
 	VkViewport viewport;
 	VkRect2D scissor;
 	VkPipelineViewportStateCreateInfo pipeline_viewport_state_info;
-	VkPipelineRasterizationStateCreateInfo pipeline_rasterization_state_infos[2];
+	VkPipelineRasterizationStateCreateInfo pipeline_rasterization_state_infos[3];
 	VkPipelineMultisampleStateCreateInfo pipeline_multisample_state_info;
 	VkPipelineColorBlendAttachmentState pipeline_color_blend_attachment_state;
 	VkPipelineColorBlendStateCreateInfo pipeline_color_blend_state_info;
 	VkPipelineLayout pipeline_layouts[1];
-	VkPipeline pipelines[4];
+	VkPipeline pipelines[5];
 	VkCommandPool command_pool;
 	VkPipelineLayoutCreateInfo pipeline_layout_infos[2];
 	VkAttachmentDescription attachment_description;
@@ -428,7 +488,7 @@ struct lightray_vulkan_core_t
 	VkSubpassDescription subpass_description;
 	VkSubpassDependency subpass_dependency;
 	VkRenderPassCreateInfo render_pass_info;
-	VkGraphicsPipelineCreateInfo graphics_pipeline_infos[4];
+	VkGraphicsPipelineCreateInfo graphics_pipeline_infos[5];
 	VkCommandPoolCreateInfo command_pool_info;
 	VkCommandBufferAllocateInfo render_command_buffers_allocate_info;
 	VkCommandBufferAllocateInfo general_purpose_command_buffer_allocate_info;
@@ -475,7 +535,7 @@ struct lightray_vulkan_core_t
 	const char* enabled_device_extensions[LIGHTRAY_ENABLED_DEVICE_EXTENSION_COUNT];
 	VkExtensionProperties* available_device_extensions; 
 	u32 gpu_count;
-	u32 flags;
+	u64 flags; // 0 - 31 lightray_bits : 32 -> 63 lightray_vulkan_bits
 	f32 queue_priority;
 	u32 queues_in_use_info_count;
 	u32 queue_family_indices_in_use_count;
@@ -521,6 +581,7 @@ void																				lightray_vulkan_uncap_fps(lightray_vulkan_core_t* core);
 bool																				lightray_vulkan_is_fps_capped(const lightray_vulkan_core_t* core);
 void																				lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightray_vulkan_core_initialization_data_t* initialization_data);
 void																				lightray_vulkan_terminate_core(lightray_vulkan_core_t* core);
+void																				lightray_vulkan_initialize_camera(lightray_vulkan_core_t* core, const lightray_camera_initialization_data_t* initialization_data);
 void																				lightray_vulkan_set_camera_fov(lightray_vulkan_core_t* core, u32 camera_index, f32 desired_fov);
 void																				lightray_vulkan_hide_entity(lightray_vulkan_core_t* core, u32 entity_index, lightray_scene_t* scene);
 void																				lightray_vulkan_unhide_entity(lightray_vulkan_core_t* core, u32 entity_index, lightray_scene_t* scene);
@@ -528,8 +589,9 @@ void																				lightray_vulkan_move_entity(lightray_vulkan_move_entity_
 void																				lightray_vulkan_initialize_core_tick_end_data(lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_vulkan_core_tick_end_data_t* tick_data);
 void																				lightray_vulkan_tick_core_begin(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_vulkan_core_tick_end_data_t* tick_data);
+void																				lightray_vulkan_execute_post_render_pass_flush(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_set_relative_path(lightray_vulkan_core_t* core, cstring_literal* path);
-u64																				lightray_vulkan_compute_required_user_chosen_arena_suballocation_size(u32 mesh_count, u32 texture_count, u32 animation_count, u32 alignment);
+u64																				lightray_vulkan_compute_required_user_chosen_arena_suballocation_size(u32 mesh_count, u32 texture_count, u32 msdf_font_atlas_count, u32 animation_count, u32 camera_count, u32 alignment);
 void																				lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags);
 lightray_vulkan_result													lightray_vulkan_bind_texture(lightray_vulkan_core_t* core, u32 mesh_index, u32 texture_index);
 lightray_vulkan_result													lightray_vulkan_execute_pre_render_pass_buffer_reorder(lightray_vulkan_core_t* core);
@@ -538,11 +600,17 @@ void																				lightray_vulkan_populate_mesh_binding_offset_buffer(cons
 
 																					// size can be left 0 for each mesh type and in that case nullptr can be passed as buffers safely. however, if size is > 0, the validity of the pointer will not be checked, because fuck you
 u32																				lightray_vulkan_get_total_mesh_instance_count(const lightray_vulkan_static_mesh_metadata_t* static_mesh_metadata_buffer, u32 static_mesh_count, const lightray_vulkan_skeletal_mesh_metadata_t* skeletal_mesh_metadata_buffer, u32 skeletal_mesh_count);
-void																				lightray_vulkan_set_camera_clip_plane(lightray_vulkan_core_t* core, u32 camera_index, f32 near_plane, f32 far_plane);
-lightray_camera_t	*														lightray_vulkan_get_main_3d_camera(const lightray_vulkan_core_t* core);
-lightray_camera_t*														lightray_vulkan_get_camera_at_index(const lightray_vulkan_core_t* core, u32 camera_index);
+lightray_camera_t*														lightray_vulkan_get_camera(const lightray_vulkan_core_t* core, u32 camera_index);
+lightray_vulkan_result													lightray_vulkan_bind_perspective_camera(lightray_vulkan_core_t* core, u32 camera_index);
+lightray_vulkan_result													lightray_vulkan_bind_overlay_camera(lightray_vulkan_core_t* core, u32 camera_index);
 
-u32																				lightray_vulkan_issue_animation_playback_command(lightray_vulkan_core_t* core, u32 animation_index, u32 skeleton_index, u32 instance_index, bool loop);
+void																				lightray_vulkan_do_glyph_stuff(lightray_vulkan_core_t* core);
+void																				lightray_vulkan_push_overlay_text_elements(lightray_vulkan_core_t* core, const lightray_overlay_text_element_t* text_elements, u32 element_count);
+void																				lightray_vulkan_render_static_overlay_layers();
+f32																				lightray_vulkan_normalize_width_f32(const lightray_vulkan_core_t* core, f32 pixels);
+f32																				lightray_vulkan_normalize_height_f32(const lightray_vulkan_core_t* core, f32 pixels);
+
+u32																				lightray_vulkan_push_animation_playback_command(lightray_vulkan_core_t* core, u32 animation_index, u32 skeleton_index, u32 instance_index, bool loop);
 void																				lightray_vulkan_withdraw_animation_playback_command(lightray_vulkan_core_t* core, u32 playback_command_index);
 void																				lightray_vulkan_flush_animation_playback_command_buffer(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_set_animation_playback_scale(lightray_vulkan_core_t* core, u32 playback_command_index, f32 scale);
@@ -611,3 +679,4 @@ SUNDER_DEFINE_QUERY_BUFFER_INDEX_FUNCTION(VkFilter, lightray_vulkan, vk_filter, 
 
 void																				lightray_vulkan_log_mesh_render_pass_data_buffer(const lightray_vulkan_core_t* core);
 u32																				lightray_vulkan_swap_meshes_inplace(lightray_vulkan_mesh_render_pass_data_t* mesh_render_pass_data_buffer, u32 i, u32* dst_index, u32 starting_index, u32 range, lightray_vulkan_mesh_render_type render_type, bool textured);
+bool																				lightray_vulkan_texture_sampler_metadata_exists(lightray_vulkan_texture_sampler_metadata_t* metadata_filter_buffer, u32 size, const lightray_vulkan_texture_sampler_metadata_t* metadata);

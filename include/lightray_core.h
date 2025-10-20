@@ -19,6 +19,7 @@
 #include "assimp/version.h"
 #include <intrin.h>
 #include <immintrin.h>
+#include "cJSON.h"
 
 #define LIGHTRAY_LOG(a) std::cout << a
 #define LIGHTRAY_WORLD_FORWARD_VECTOR 0.0f, 1.0f, 0.0f
@@ -284,7 +285,7 @@ struct lightray_vertex_t
 	glm::vec3 normal;
 	f32 padding1;
 
-	glm::vec2 uv;
+	glm::vec2 uv; // probably remove that
 	glm::u8vec4 bone_indices;
 	glm::u8vec4 weights;
 };
@@ -299,6 +300,87 @@ struct lightray_render_instance_t
 	lightray_model_t model{};
 	f32 layer_index = 0.0f;
 	u32 computed_bone_transform_matrix_buffer_offset_with_respect_to_instance = 0;
+	// glm::vec2 uv; ???
+};
+
+struct lightray_orthographic_bounds_t
+{
+	f64 left;
+	f64 right;
+	f64 top;
+	f64 bottom;
+};
+
+struct lightray_glyph_t
+{
+	f64 advance;
+	lightray_orthographic_bounds_t plane_bounds;
+	lightray_orthographic_bounds_t atlas_bounds;
+	i32 index;
+	bool has_bounds;
+};
+
+struct lightray_render_instance_glyph_t
+{
+	glm::mat4 model_matrix;
+	glm::vec2 uv_min;
+	glm::vec2 uv_max;
+	f32 padding;
+	glm::vec3 color;
+};
+
+struct lightray_font_atlas_t
+{
+	f64 ascender;
+	f64 descender;
+	f64 base_line_height;
+	u32 width;
+	u32 height;
+	u32 glyph_count;
+	u32 glyph_buffer_offset;
+	u32 glyph_size;
+	f32 em_size;
+};
+
+enum lightray_overlay_text_element_type : u32
+{
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_U8 = 0u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_U16 = 1u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_U32 = 2u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_U64 = 3u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_I8 = 4u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_I16 = 5u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_I32 = 6u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_I64 = 7u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_F32 = 8u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_F64 = 9u,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_B32 = 10,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_STRING = 11u
+};
+
+struct lightray_overlay_text_element_t
+{
+	const void* data = nullptr;
+	u64 element_count = 0; // how many elements in 'data
+	glm::vec2 position{};
+	glm::vec3 color{};
+	lightray_overlay_text_element_type type{};
+	f32 glyph_size = 0; // in pixels
+	u32 precision = 0; // only for floats
+	// u32 sprite_index
+};
+
+struct lightray_overlay_core_t
+{
+	lightray_font_atlas_t* font_atlas_buffer;
+	lightray_glyph_t* glyph_buffer;
+	lightray_render_instance_glyph_t* render_instance_glyph_buffer;
+	lightray_overlay_text_element_t* text_element_buffer;
+	u32 total_text_element_count;
+	u32 text_element_count;
+	u32 total_font_atlas_count;
+	u32 total_glyph_count;
+	u32 current_glyph_render_instance_count;
 };
 
 // camera's view, projection matrices
@@ -325,12 +407,35 @@ struct lightray_camera_t
 {
 	glm::vec3 position{};
 	glm::vec2 rotation{}; // yaw - x , pitch - y 
-	f32 sensetivity = 0;
+	f32 sensitivity = 0;
 	f32 fov = 0;
 	f32 near_clip_plane_distance = 0;
 	f32 far_clip_plane_distance = 0;
+	f32 left = 0.0f;
+	f32 right = 0.0f;
+	f32 bottom = 0.0f;
+	f32 top = 0.0f;
 	lightray_camera_projection_kind projection_kind = LIGHTRAY_CAMERA_PROJECTION_KIND_UNDEFINED;
-	bool first_camera_tick{};
+	bool first_tick = true;
+	bool vulkan_y_flip = true;
+};
+
+struct lightray_camera_initialization_data_t
+{
+	glm::vec3 position{};
+	glm::vec2 rotation{}; // yaw - x , pitch - y 
+	f32 sensitivity = 0;
+	f32 fov = 0;
+	f32 near_clip_plane_distance = 0;
+	f32 far_clip_plane_distance = 0;
+	f32 left = 0.0f;
+	f32 right = 0.0f;
+	f32 bottom = 0.0f;
+	f32 top = 0.0f;
+	u32 camera_index = 0;
+	lightray_camera_projection_kind projection_kind = LIGHTRAY_CAMERA_PROJECTION_KIND_UNDEFINED;
+	bool first_tick = true;
+	bool vulkan_y_flip = true;
 };
 
 struct lightray_node_t
@@ -395,7 +500,8 @@ struct lightray_skeleton_t
 
 struct lightray_animation_core_t
 {
-	lightray_animation_playback_command_t* playback_command_buffer; // per skeletal mesh instance
+	lightray_animation_playback_command_t* playback_command_buffer;
+	u32 total_playback_command_count;
 	u32 playback_command_count;
 	u32 total_skeletal_mesh_instance_count;
 	u64 playback_flags; // 1 bit per skeletal mesh / layer maybe change that to an array depending on skeletal mesh instance count
@@ -564,7 +670,8 @@ bool														lightray_should_tick(GLFWwindow* window);
 bool														lightray_key_pressed(GLFWwindow* window, lightray_key_binding key, u8* key_tick_data);
 bool														lightray_key_down(GLFWwindow* window, lightray_key_binding key);
 bool														lightray_mouse_button_pressed(GLFWwindow* window, lightray_key_binding mouse_button, u8* key_tick_data);
-glm::mat4												lightray_construct_projection_matrix(f32 desired_fov, f32 aspect_ratio, f32 near_plane, f32 far_plane);
+glm::mat4												lightray_construct_perspective_projection_matrix(f32 desired_fov, f32 aspect_ratio, f32 near_plane, f32 far_plane, bool vulkan_y_flip);
+glm::mat4												lightray_construct_orthographic_projection_matrix(f32 left, f32 right, f32 bottom, f32 top, f32 near_plane, f32 far_plane, bool vulkan_y_flip);
 f32														lightray_compute_aspect_ratio(f32 width, f32 height);
 glm::vec3												lightray_to_world_forward_from_euler(const glm::vec3& euler_radians, const glm::vec3& local_forward);
 glm::vec3												lightray_to_world_forward_from_model(const glm::mat4& model_matrix, const glm::vec3& local_forward);
@@ -643,3 +750,5 @@ void														lightray_assimp_execute_second_node_buffer_population_pass(con
 
 u32														lightray_get_skeletal_mesh_global_mesh_index(u32 skeletal_mesh_index, u32 static_mesh_count);
 glm::vec2												lightray_get_cursor_position(GLFWwindow* window);
+void														lightray_load_json_garbage();
+i32														lightray_get_file_size(cstring_literal* path);
