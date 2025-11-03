@@ -49,10 +49,16 @@
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_INDEX 2048u
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_LAYER_INDEX 256
 #define LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT 8u
-#define LIGHTRAY_VULKAN_ALIGNED_ALLOCATION_SIZE_BUFFER_LENGTH 48u
+#define LIGHTRAY_VULKAN_ALIGNED_ALLOCATION_SIZE_BUFFER_LENGTH 49u
 #define LIGHTRAY_VULKAN_INVALUD_BATCH_INDEX 6144u
 
 SUNDER_DEFINE_BUFFER_INDEX_QUERY_RESULT_STRUCTURE(VkFilter, lightray_vulkan, vk_filter, u32)
+
+enum lightray_vulkan_render_method : u32
+{
+	LIGHTRAY_VULKAN_RENDER_METHOD_INSTANCED = 0u,
+	LIGHTRAY_VULKAN_RENDER_METHOD_INDIRECT = 1u
+};
 
 struct lightray_vulkan_texture_sampler_metadata_t
 {
@@ -122,11 +128,12 @@ struct lightray_vulkan_mesh_render_pass_data_t
 	u64 vertex_count = 0;
 	u32 index_count = 0;
 	u32 index_buffer_offset = 0;
-	u32 instance_count = 0;
+	u32 opaque_instance_count = 0;
+	u32 wireframe_instance_count = 0;
 	u32 instance_buffer_offset = 0;
 	u32 instance_to_render_count = 0;
 	u32 texture_index = 0;
-	lightray_vulkan_mesh_render_type render_type;
+	lightray_vulkan_mesh_render_type render_type{};
 };
 
 enum lightray_vulkan_result : u32
@@ -388,7 +395,9 @@ struct lightray_vulkan_core_t
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
-	//u32* wireframe_mesh_count_buffer;
+	u32 total_wireframe_present_mesh_index_count;
+	u32* wireframe_present_mesh_index_buffer;
+
 	lightray_vulkan_mesh_render_pass_data_t* mesh_render_pass_data_buffer;
 	u32* mesh_render_pass_data_mapping_buffer;
 	u32* mesh_render_pass_data_reordering_helper_buffer;
@@ -589,7 +598,7 @@ void																				lightray_vulkan_move_entity(lightray_vulkan_move_entity_
 void																				lightray_vulkan_initialize_core_tick_end_data(lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_vulkan_core_tick_end_data_t* tick_data);
 void																				lightray_vulkan_tick_core_begin(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_vulkan_core_tick_end_data_t* tick_data);
-void																				lightray_vulkan_execute_post_render_pass_flush(lightray_vulkan_core_t* core);
+void																				lightray_vulkan_execute_post_render_pass_state_flush(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_set_relative_path(lightray_vulkan_core_t* core, cstring_literal* path);
 u64																				lightray_vulkan_compute_required_user_chosen_arena_suballocation_size(u32 mesh_count, u32 texture_count, u32 msdf_font_atlas_count, u32 animation_count, u32 camera_count, u32 alignment);
 void																				lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags);
@@ -617,8 +626,14 @@ void																				lightray_vulkan_set_animation_playback_scale(lightray_vu
 lightray_vulkan_result													lightray_vulkan_play_animation(lightray_vulkan_core_t* core, u32 playback_command_index);
 void																				lightray_vulkan_apply_bind_pose(lightray_vulkan_core_t* core, u32 skeleton_index, u32 instance_index);
 
+
+u32																				lightray_vulkan_get_reordered_global_mesh_index(const lightray_vulkan_core_t* core, u32 og_mesh_index);
+
 																					// returns a structure with runtime, setup time indices for access
 lightray_vulkan_runtime_asset_loading_result_t			lightray_vulkan_load_asset_runtime(lightray_vulkan_core_t* core, const lightray_vulkan_runtime_asset_loading_data_t* loading_data);
+
+																					// returns a bit mask of 'lightray_raycast_result_bits' enum. 0 if none hit
+u32																				lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, const lightray_ray_t* ray, u64 collision_layers);
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //																																				INTERNAL API FUNCTIONS																																												 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -680,3 +695,5 @@ SUNDER_DEFINE_QUERY_BUFFER_INDEX_FUNCTION(VkFilter, lightray_vulkan, vk_filter, 
 void																				lightray_vulkan_log_mesh_render_pass_data_buffer(const lightray_vulkan_core_t* core);
 u32																				lightray_vulkan_swap_meshes_inplace(lightray_vulkan_mesh_render_pass_data_t* mesh_render_pass_data_buffer, u32 i, u32* dst_index, u32 starting_index, u32 range, lightray_vulkan_mesh_render_type render_type, bool textured);
 bool																				lightray_vulkan_texture_sampler_metadata_exists(lightray_vulkan_texture_sampler_metadata_t* metadata_filter_buffer, u32 size, const lightray_vulkan_texture_sampler_metadata_t* metadata);
+
+bool																				get_cell_from_position(const glm::vec3& pos, i32& out_row, i32& out_col, const glm::vec3& grid_origin);

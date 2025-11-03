@@ -1,6 +1,6 @@
 #pragma once
 
-#include "snd_lib.h"
+#include "snd_lib_math.h"
 #define GLFW_STATIC
 #include "glfw3.h"
 #define GLM_ENABLE_EXPERIMENTAL
@@ -22,8 +22,8 @@
 #include "cJSON.h"
 
 #define LIGHTRAY_LOG(a) std::cout << a
-#define LIGHTRAY_WORLD_FORWARD_VECTOR 0.0f, 1.0f, 0.0f
-#define LIGHTRAY_WORLD_RIGHT_VECTOR 1.0f, 0.0f, 0.0f
+#define LIGHTRAY_WORLD_FORWARD_VECTOR 1.0f, 0.0f, 0.0f
+#define LIGHTRAY_WORLD_RIGHT_VECTOR 0.0f, -1.0f, 0.0f
 #define LIGHTRAY_WORLD_UP_VECTOR 0.0f, 0.0f, 1.0f
 // based
 #define plex struct
@@ -218,7 +218,9 @@ enum lightray_result : u32
 	LIGHTRAY_RESULT_MESH_BINDING_OVERFLOW = 10u,
 	LIGHTRAY_RESULT_FAILED_TO_OPEN_COMPILED_SHADER_BYTE_CODE = 11u,
 	LIGHTRAY_RESULT_COMPILED_SHADER_BYTE_CODE_SIZE_LIMIT_HAS_BEEN_EXCEEDED = 12u,
-	LIGHTRAY_RESULT_FAILED_TO_LOAD_COMPILED_SHADER_BYTE_CODE = 13u
+	LIGHTRAY_RESULT_FAILED_TO_LOAD_COMPILED_SHADER_BYTE_CODE = 13u,
+	LIGHTRAY_RESULT_WIREFRAME_MESH_BINDING_COUNT_HAS_BEEN_EXCEEDED = 14u,
+	LIGHTRAY_RESULT_OPAQUE_MESH_BINDING_COUNT_HAS_BEEN_EXCEEDED = 15u
 };
 
 enum lightray_render_target_kind : u32
@@ -270,11 +272,6 @@ struct lightray_animation_playback_command_t
 	f32 scale = 0.0f;
 	f32 time = 0.0f;
 	f32 ticks = 0.0f;
-};
-
-struct lightray_spatial_partitioning_grid_t
-{
-
 };
 
 struct lightray_vertex_t
@@ -354,7 +351,7 @@ enum lightray_overlay_text_element_type : u32
 	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_I64 = 7u,
 	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_F32 = 8u,
 	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_F64 = 9u,
-	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_B32 = 10,
+	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_B32 = 10u,
 	LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_STRING = 11u
 };
 
@@ -572,12 +569,12 @@ enum lightray_entity_kind : u32
 
 enum lightray_entity_bits : u32
 {
-	LIGHTRAY_ENTITY_BITS_IS_COLLIDING = 0u
+	LIGHTRAY_ENTITY_BITS_OF_COLLIDABLE_KIND_BIT = 1u, // entity that has aabb, or maybe collision mesh entities bound to it. aabb, collision mesh entities ARE NOT considered of collidable kind
 };
 
 struct lightray_entity_t
 {
-	u128_t guid;
+	u64 guid;
 	lightray_entity_kind kind;
 	u32 mesh_binding_index;
 	u32 instance_model_binding_index;
@@ -590,6 +587,12 @@ struct lightray_scene_suballocation_data_t
 	u32 total_instance_model_count = 0;
 	u32 total_entity_count = 0;
 	u32 total_mesh_count = 0;
+	u32 collidable_entity_count = 0;
+	u32 grid_cell_index_per_collidable_entity_count = 0;
+	u32 collision_mesh_per_batch_count = 0;
+	u32 game_side_entity_kind_count = 0;
+	const u32* index_buffer = nullptr;
+	const lightray_vertex_t* vertex_buffer = nullptr;
 
 	sunder_arena_t* arena = nullptr;
 };
@@ -598,6 +601,12 @@ struct lightray_mesh_binding_t
 {
 	u32 transform_index = 0;
 	u32 instance_model_index = 0;
+};
+
+struct lightray_mesh_binding_result_t
+{
+	lightray_result result{};
+	u32 mesh_binding_index = 0;
 };
 
 struct lightray_mesh_binding_offsets_t
@@ -610,22 +619,136 @@ struct lightray_mesh_binding_offsets_t
 
 struct lightray_mesh_binding_metadata_t
 {
-	u32 instance_count = 0;
-	u32 current_binding_count = 0;
+	u32 opaque_instance_count = 0;
+	u32 current_opaque_instance_binding_count = 0;
+	u32 wireframe_instance_count = 0;
+	u32 current_wireframe_instance_binding_count = 0;
+};
+
+enum lightray_raycast_result_bits : u32
+{
+	LIGHTRAY_RAYCAST_RESULT_BITS_AABB_HIT_BIT = 0u,
+	LIGHTRAY_RAYCAST_RESULT_BITS_COLLISION_MESH_HIT_BIT = 1u,
+};
+
+enum lightray_collision_attribute_bits : u64
+{
+	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_CAN_BE_COLLIDED_WITH_BIT = 0u,
+	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLIDES_BIT = 1u,
+	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_AABB_COLLIDES_BIT = 2u,
+	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLISION_MESHES_COLLIDE_BIT = 3u
+};
+
+struct lightray_collision_attribute_t
+{
+	u64 collision_layer_bitmask = 0;
+	u64 exception_collision_layer_bitmask = 0;
+	u64 collision_layer_result_bitmask = 0;
+	u32 game_side_entity_kind_bitmask_buffer_offset = 0;
+	u32 game_side_entity_kind = 0;
+	u32 has_already_collided_with_bitmask_buffer_offset = 0;
+	u32 collision_layer_index_buffer_offset = 0;
+	u32 collision_layer_count = 0;
+	u32 grid_cell_index_buffer_offset = 0;
+	u32 row_count = 0;
+	u32 width_per_row = 0;
+	u32 aabb_index = 0;
+	u32 collision_mesh_batch_index = 0;
+	u32 flags = 0;
+	u32 should_reproject_vertices_bitmask = 0;
+	u32 has_already_projected_vertices_bitmask = 0;
+};
+
+struct lightray_rotation_t
+{
+	sunder_v3_t axis{};
+	f32 angle = 0.0f; // degrees
+};
+
+struct lightray_transform_binding_v3_t
+{
+	sunder_v3_t relative_offset{};
+	u32 parent_entity_index = 0;
+	u32 entity_index = 0;
+};
+
+struct lightray_transform_binding_quat_t
+{
+	lightray_rotation_t relative_rotation{};
+	u32 parent_entity_index = 0;
+	u32 entity_index = 0;
+};
+
+struct lightray_collision_mesh_t
+{
+	sunder_v3_t* raw_vertex_position_buffer = nullptr;
+	sunder_v3_t* projected_vertex_position_buffer = nullptr;
+	const lightray_model_t* model = nullptr;
+	u32 vertex_count = 0;
+	u32 index_buffer_offset = 0;
+	u32 entity_index = 0;
+};
+
+struct lightray_collision_mesh_batch_t
+{
+	u32 collision_mesh_buffer_offset = 0;
+	u32 collision_mesh_count = 0;
 };
 
 // rename this to entity_core_t
 struct lightray_scene_t
 {
+	const u32* index_buffer = nullptr;
+	const lightray_vertex_t* vertex_buffer = nullptr;
+
 	u32 total_instance_model_count = 0;
 	u32 total_mesh_count = 0;
 	u32 current_entity_count = 0;
 	u32 total_entity_count = 0;
 
 	lightray_entity_t* entity_buffer = nullptr;
-	glm::vec3* position_buffer = nullptr;
-	glm::vec3* rotation_buffer = nullptr;
-	glm::vec3* scale_buffer = nullptr;
+	sunder_v3_t* position_buffer = nullptr;
+	sunder_v3_t* rotation_buffer = nullptr;
+	sunder_v3_t* scale_buffer = nullptr;
+
+	sunder_arena_t collision_mesh_vertex_buffers_arena{};
+	lightray_collision_mesh_batch_t* collision_mesh_batch_buffer = nullptr;
+	lightray_collision_mesh_t* collision_mesh_buffer = nullptr;
+
+	u32 total_collision_mesh_batch_count = 0;
+	u32 total_collision_mesh_count = 0;
+
+	u32 current_collision_mesh_batch_count = 0;
+	u32 current_collision_mesh_count = 0;
+
+	u32 collision_mesh_per_batch_count = 0;
+
+	////////////////
+	u64* has_already_collided_with_bitmask_buffer = nullptr;
+	u32 total_has_already_collided_with_bitmask_count = 0;
+	u32 has_already_collided_with_bitmask_per_collision_attribute_count = 0;
+	////////////////
+	 
+	////////////////
+	u64* game_side_entity_kind_bitmask_buffer = nullptr;
+	u32 game_side_entity_kind_bitmask_per_collision_attribute_count = 0;
+	u32 total_game_side_entity_kind_bitmask_count = 0;
+	////////////////
+
+	////////////////
+	u32* collision_layer_index_buffer = nullptr;
+	u32 total_collision_layer_index_count = 0;
+	////////////////
+
+	lightray_collision_attribute_t* collision_attribute_buffer = nullptr; // per collidable entity
+	u32* grid_cell_index_buffer = nullptr; // grid_cell_index_per_collidable_entity_count * collidable entity
+
+	u32 total_collidable_entity_count = 0;
+	u32 grid_cell_index_per_collidable_entity_count = 0;
+
+	u32 total_grid_cell_index_count = 0;
+
+	u32 collision_attribute_current_count = 0;
 
 	lightray_mesh_binding_offsets_t* mesh_binding_offsets = nullptr; // per mesh
 	lightray_mesh_binding_t* mesh_binding_buffer = nullptr; // per instance model
@@ -640,6 +763,46 @@ struct lightray_console_t
 	u32 current_size = 0;
 	u32 current_index = 0;
 	u32 capacity = 0;
+};
+
+struct lightray_grid_creation_data_t
+{
+	sunder_arena_t* arena = nullptr;
+	lightray_scene_t* scene = nullptr;
+	u32 first_column_entity_index = 0;
+	u32 first_row_entity_index = 0;
+	u32 column_count = 0;
+	u32 row_count = 0;
+	sunder_v3_t origin{};
+	f32 cell_width = 0.0f;
+	f32 cell_height = 0.0f;
+	u32 collidable_entity_per_cell_count = 0;
+};
+
+struct lightray_grid_cell_t
+{
+	u32 collision_attribute_index_buffer_offset = 0;
+	u32 collision_attribute_index_count = 0;
+};
+
+struct lightray_grid_cell_aabb_coordinates_t
+{
+	i32 min = 0;
+	i32 max = 0;
+};
+
+struct lightray_grid_t
+{
+	lightray_grid_cell_t* cell_buffer = nullptr;
+	u32* collision_attribute_index_buffer = nullptr;
+	u32 collision_attribute_index_count = 0;
+	u32 collision_attribute_index_count_per_cell = 0;
+	u32 cell_count = 0;
+	sunder_v3_t origin{};
+	u32 column_count = 0;
+	u32 row_count = 0;
+	f32 cell_width = 0.0f;
+	f32 cell_height = 0.0f;
 };
 
 /*
@@ -678,20 +841,21 @@ glm::vec3												lightray_to_world_forward_from_model(const glm::mat4& model
 glm::vec3												lightray_get_camera_forward(const glm::mat4& camera_view_matrix);
 glm::vec3												lightray_get_camera_right(const glm::mat4& camera_view_matrix);
 bool														lightray_ray_triangle_intersect(const lightray_ray_t* ray, const glm::vec3* triangle_vertices, f32* t, f32* u, f32* v);
-bool														lightray_aabbs_intersect(const glm::vec3& position_a, const glm::vec3& scale_a, const glm::vec3& position_b, const glm::vec3& scale_b);
-void														lightray_get_raw_vertex_positions(u32 index_buffer_offset, u32 index_count, glm::vec3* buffer, const lightray_vertex_t* vertex_buffer, const u32* index_buffer);
+void														lightray_compute_aabb_min_max(const sunder_v3_t& position, const sunder_v3_t& scale, sunder_v3_t* min, sunder_v3_t* max);
+b32														lightray_aabbs_intersect(const sunder_v3_t& position_a, const sunder_v3_t& scale_a, const sunder_v3_t& position_b, const sunder_v3_t& scale_b);
+void														lightray_get_raw_vertex_positions(u32 index_buffer_offset, u32 index_count, sunder_v3_t* buffer, const lightray_vertex_t* vertex_buffer, const u32* index_buffer);
 				
 															// takes raw vertex positions and computes their positions in model space (expensive, use one of vectorized version) 
-void														lightray_compute_projected_vertex_positions(const glm::vec3* raw_vertex_positions, glm::vec3* projected_vertex_positions, u64 vertex_count, const lightray_model_t* model);
+void														lightray_compute_projected_vertex_positions(const sunder_v3_t* raw_vertex_positions, sunder_v3_t* projected_vertex_positions, u32 vertex_count, const lightray_model_t* model);
 
-glm::vec3												lightray_gjk_find_furthest_point(const glm::vec3* tri, u64 vertex_count, const glm::vec3& direction);
-glm::vec3												lightray_gjk_support(const glm::vec3* vertex_positions1, u64 vertex_count1, const glm::vec3* vertex_positions2, u64 vertex_count2, const glm::vec3& direction);
-bool														lightray_gjk_same_direction(const glm::vec3& direction, const glm::vec3& ao);
-bool														lightray_gjk_line(glm::vec3* simplex, u32* simplex_size, glm::vec3* direction);
-bool														lightray_gjk_triangle(glm::vec3* simplex, u32* simplex_size, glm::vec3* direction);
-bool														lightray_gjk_tetrahedron(glm::vec3* simplex, u32* simplex_size, glm::vec3* direction);
-bool														lightray_gjk_next_simplex(glm::vec3* simplex, u32* simplex_size, glm::vec3* direction);
-bool														lightray_gjk_intersect(const glm::vec3* vertex_positions1, u64 vertex_count1, const glm::vec3* vertex_positions2, u64 vertex_count2);
+sunder_v3_t											lightray_gjk_find_furthest_point(const sunder_v3_t* tri, u32 vertex_count, const sunder_v3_t& direction);
+sunder_v3_t											lightray_gjk_support(const sunder_v3_t* vertex_positions1, u32 vertex_count1, const sunder_v3_t* vertex_positions2, u32 vertex_count2, const sunder_v3_t& direction);
+b32														lightray_gjk_same_direction(const sunder_v3_t& direction, sunder_v3_t& ao);
+b32														lightray_gjk_line(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction);
+b32														lightray_gjk_triangle(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction);
+b32														lightray_gjk_tetrahedron(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction);
+b32														lightray_gjk_next_simplex(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction);
+b32														lightray_gjk_intersect(const sunder_v3_t* vertex_positions1, u32 vertex_count1, const sunder_v3_t* vertex_positions2, u32 vertex_count2);
 
 glm::mat4												lightray_assimp_to_glm_mat4(const aiMatrix4x4& mat);
 u32														lightray_assimp_get_mesh_index_count(const aiMesh* mesh);
@@ -707,18 +871,16 @@ void														lightray_set_target_fps(f32 desired_fps, f32* frame_duration_s
 															// dont need to deallocate anything, because this function just suballocates from specified arena
 void														lightray_suballocate_scene(lightray_scene_t* scene, const lightray_scene_suballocation_data_t* suballocation_data);
 u64														lightray_compute_scene_suballocation_size(const lightray_scene_suballocation_data_t* suballocation_data, u64 alignment);
-lightray_entity_creation_result_t			lightray_create_entity(lightray_scene_t* scene, lightray_entity_kind kind);
-lightray_result										lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind);
+lightray_entity_creation_result_t			lightray_create_entity(lightray_scene_t* scene, lightray_entity_kind kind, u32 flags);
+lightray_mesh_binding_result_t			lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind);
 void														lightray_hide_entity(lightray_model_t* instance_model_buffer, lightray_model_t* hidden_instance_model_buffer, u32* instance_model_to_render_count_buffer, u32* instance_model_buffer_offsets_per_mesh, u32 entity_index, lightray_scene_t* scene);
 void														lightray_unhide_entity(lightray_model_t* instance_model_buffer, lightray_model_t* hidden_instance_model_buffer, u32* instance_model_to_render_count_buffer, u32* instance_model_buffer_offsets_per_mesh, u32 entity_index, lightray_scene_t* scene);
-void														lightray_bind_entity(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index); // change it so that until mesh's instance is bound to any entity, it wouldn't be rendered
+void														lightray_bind_entity(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index);
 void														lightray_move_entity(lightray_scene_t* scene, u32 self_aabb_index, u32 self_collision_mesh_index, const u32* index_buffer_offsets, const u32* index_count_buffer, const u32* index_buffer, const lightray_vertex_t* vertex_buffer, lightray_model_t* instance_model_buffer, glm::vec3* self_raw_vertex_positions, glm::vec3* self_projected_vertex_positions, glm::vec3* other_raw_vertex_positions, glm::vec3* other_projected_vertex_positions, u32 entity_index, const glm::vec3& direction);
 u32														lightray_get_entity_bound_collision_mesh_index_count(const lightray_scene_t* scene, u32 entity_index);
 void														lightray_get_entity_bound_collision_mesh_indices(const lightray_scene_t* scene, u32 entity_index, u32* collision_mesh_index_buffer);
 u32														lightray_get_entity_bound_aabb_index_count(const lightray_scene_t* scene, u32 collision_mesh_index);
 void														lightray_get_entity_bound_aabb_indices(const lightray_scene_t* scene, u32 collision_mesh_index, u32* aabb_index_buffer);
-void														lightray_bind_collision_layer();
-void														lightray_unbind_collision_layer();
 void														lightray_log_mesh_binding_offset_buffer(const lightray_scene_t* scene);
 void														lightray_log_mesh_binding_metadata_buffer(const lightray_scene_t* scene);
 void														lightray_log_mesh_binding_buffer(const lightray_scene_t* scene);
@@ -752,3 +914,45 @@ u32														lightray_get_skeletal_mesh_global_mesh_index(u32 skeletal_mesh_
 glm::vec2												lightray_get_cursor_position(GLFWwindow* window);
 void														lightray_load_json_garbage();
 i32														lightray_get_file_size(cstring_literal* path);
+
+void														lightray_create_grid(lightray_grid_t* grid, const lightray_grid_creation_data_t* creation_data);
+b32														lightray_get_grid_cell_coordinates(const lightray_grid_t* grid, const sunder_v3_t* world_position, u32* row_index, u32* column_index);
+void														lightray_get_grid_cell_coordinates_aabb(const lightray_grid_t* grid, const sunder_v3_t* aabb_position, const sunder_v3_t* aabb_scale, lightray_grid_cell_aabb_coordinates_t* row_coordinates, lightray_grid_cell_aabb_coordinates_t* column_coordinates);
+
+u32														lightray_push_collision_attribute(lightray_scene_t* scene);
+void														lightray_bind_aabb(lightray_scene_t* scene, u32 collidable_entity_index, u32 aabb_index, u32 collision_attribute_index);
+u32														lightray_get_grid_cell_index(const lightray_grid_t* grid, u32 row_index, u32 column_index);
+
+void														lightray_log_glm_matrix(const glm::mat4& m);
+glm::mat4												lightray_copy_sunder_m4_to_glm(const sunder_m4_t& m);
+
+void														lightray_bind_position(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index, const sunder_v3_t& relative_offset);
+
+u32														lightray_push_collision_mesh_batch(lightray_scene_t* scene); // 0
+
+															// by vertex count, the total vertex count (before merging) is meant (index count should contain the total vertex count value) / returns relative to chosen batch index
+u32														lightray_push_collision_mesh(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_mesh_index, u32 vertex_count, u32 index_buffer_offset, const lightray_model_t* model); // 1
+void														lightray_bind_collision_mesh_batch(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_attribute_index); // 2
+void														lightray_allocate_collision_mesh_vertex_buffers(lightray_scene_t* scene); // 3
+void														lightray_free_collision_mesh_vertex_buffers(lightray_scene_t* scene); // 6
+
+void														lightray_initialize_collision_mesh_raw_vertex_buffer(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_mesh_index); // 4
+void														lightray_initialize_collision_mesh_projected_vertex_buffer(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_mesh_index); //5
+
+															// all 4 of these below expect a filled out bitmask (1ull << bit0) | (1ull << bit1) ..
+void														lightray_add_collision_layer(lightray_scene_t* scene, u32 collision_attribute_index, u64 collision_layer);
+void														lightray_remove_collision_layer(lightray_scene_t* scene, u32 collision_attribute_index, u64 collision_layer);
+void														lightray_add_collision_layer_exception(lightray_scene_t* scene, u32 collision_attribute_index, u64 exception_layer);
+void														lightray_remove_collision_layer_exception(lightray_scene_t* scene, u32 collision_attribute_index, u64 exception_layer);
+
+void														lightray_enable_collision(lightray_scene_t* scene, u32 collision_attribute_index);
+void														lightray_disable_collision(lightray_scene_t* scene, u32 collision_attribute_index);
+void														lightray_enable_per_frame_vertex_reprojection(lightray_scene_t* scene, u32 collision_attribute_index, u32 collision_mesh_index);
+void														lightray_disable_per_frame_vertex_reprojection(lightray_scene_t* scene, u32 collision_attribute_index, u32 collision_mesh_index);
+
+b32														lightray_collision_attribute_collides(const lightray_scene_t* scene, u32 collision_mesh_attribute_index);
+b32														lightray_collision_attribute_aabb_collides(const lightray_scene_t* scene, u32 collision_mesh_attribute_index);
+b32														lightray_collision_attribute_collision_meshes_collide(const lightray_scene_t* scene, u32 collision_mesh_attribute_index);
+b32														lightray_collision_attribute_collides_with_entity_of_kind(const lightray_scene_t* scene, u32 collision_mesh_attribute_index, u32 game_side_entity_kind);
+
+void														lightray_set_collision_attribute_entity_kind(lightray_scene_t* scene, u32 collision_mesh_attribute_index, u32 game_side_entity_kind);
