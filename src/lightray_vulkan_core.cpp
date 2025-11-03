@@ -176,7 +176,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	core->animation_core.total_playback_command_count = initialization_data->animation_playback_command_count;
 	core->overlay_core.total_font_atlas_count = initialization_data->msdf_font_atlas_count;
 	core->overlay_core.total_glyph_count = glyph_count;
-	core->overlay_core.total_text_element_count = 10;
+	core->overlay_core.total_text_element_count = 20;
 
 	const u32 default_textures_range = initialization_data->texture_count;
 
@@ -265,6 +265,11 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		total_index_count += static_mesh_index_count_iter;
 		total_vertex_count += meshes[i]->mNumVertices;
 		total_instance_model_count += initialization_data->static_mesh_metadata_buffer[i].instance_count;
+
+		if (initialization_data->static_mesh_metadata_buffer[i].wireframe_count > 0)
+		{
+			core->total_wireframe_present_mesh_index_count++;
+		}
 
 		static_mesh_index_count_iter = 0;
 	}
@@ -414,6 +419,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		aligned_allocation_size_buffer[45] = sunder_compute_aligned_allocation_size(sizeof(u64), host_visible_vram_arena_allocation_count, initialization_data->arena_alignment); // host_visible_vram_arena_suballocation_starting_offsets 
 		aligned_allocation_size_buffer[46] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_mesh_count, initialization_data->arena_alignment); // mesh_render_pass_data_reordering_helper_buffer 
 		aligned_allocation_size_buffer[47] = sunder_compute_aligned_allocation_size(sizeof(lightray_overlay_text_element_t), core->overlay_core.total_text_element_count, initialization_data->arena_alignment); // overlay text element buffer
+		aligned_allocation_size_buffer[48] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_wireframe_present_mesh_index_count, initialization_data->arena_alignment);
 
 		SUNDER_LOG("\n\naligned_allocation_size_buffer: \n");
 		for (u32 i = 0; i < LIGHTRAY_VULKAN_ALIGNED_ALLOCATION_SIZE_BUFFER_LENGTH; i++)
@@ -599,6 +605,12 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 
 		const sunder_arena_suballocation_result_t mesh_render_pass_data_reordering_helper_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(u32), core->total_mesh_count), alignof(u32));
 		core->mesh_render_pass_data_reordering_helper_buffer = SUNDER_CAST(u32*, mesh_render_pass_data_reordering_helper_buffer_suballocation_result.data);
+
+		if (core->total_wireframe_present_mesh_index_count > 0)
+		{
+			const sunder_arena_suballocation_result_t wireframe_present_mesh_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(u32), core->total_wireframe_present_mesh_index_count), alignof(u32));
+			core->wireframe_present_mesh_index_buffer = SUNDER_CAST(u32*, wireframe_present_mesh_index_buffer_suballocation_result.data);
+		}
 	}
 
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1827,7 +1839,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	core->graphics_pipeline_infos[0].flags = 0;
 	core->graphics_pipeline_infos[0].pNext = nullptr;
 
-	// wireframe pipeline, not used
+	// wireframe pipeline
 	core->graphics_pipeline_infos[1].sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
 	core->graphics_pipeline_infos[1].stageCount = 2;
 	core->graphics_pipeline_infos[1].pStages = core->pipeline_shader_stage_infos;
@@ -2332,7 +2344,8 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		index_buffer_offset_iter += core->mesh_render_pass_data_buffer[i].index_count;
 
 		// instance buffer related
-		core->mesh_render_pass_data_buffer[i].instance_count = initialization_data->static_mesh_metadata_buffer[i].instance_count;
+		core->mesh_render_pass_data_buffer[i].opaque_instance_count = initialization_data->static_mesh_metadata_buffer[i].instance_count - initialization_data->static_mesh_metadata_buffer[i].wireframe_count;
+		core->mesh_render_pass_data_buffer[i].wireframe_instance_count = initialization_data->static_mesh_metadata_buffer[i].wireframe_count;
 		core->mesh_render_pass_data_buffer[i].instance_to_render_count = initialization_data->static_mesh_metadata_buffer[i].instance_count;
 		core->mesh_render_pass_data_buffer[i].instance_buffer_offset = instance_model_buffer_offset_iter;
 		instance_model_buffer_offset_iter += initialization_data->static_mesh_metadata_buffer[i].instance_count;
@@ -2355,7 +2368,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		index_buffer_offset_iter += core->mesh_render_pass_data_buffer[i].index_count;
 
 		// instance buffer related
-		core->mesh_render_pass_data_buffer[i].instance_count = initialization_data->skeletal_mesh_metadata_buffer[skeletal_mesh_metadata_buffer_iter].instance_count;
+		core->mesh_render_pass_data_buffer[i].opaque_instance_count = initialization_data->skeletal_mesh_metadata_buffer[skeletal_mesh_metadata_buffer_iter].instance_count;
 		core->mesh_render_pass_data_buffer[i].instance_to_render_count = initialization_data->skeletal_mesh_metadata_buffer[skeletal_mesh_metadata_buffer_iter].instance_count;
 		core->mesh_render_pass_data_buffer[i].instance_buffer_offset = instance_model_buffer_offset_iter;
 		instance_model_buffer_offset_iter += initialization_data->skeletal_mesh_metadata_buffer[skeletal_mesh_metadata_buffer_iter].instance_count;
@@ -3519,6 +3532,17 @@ lightray_vulkan_result lightray_vulkan_execute_pre_render_pass_buffer_reorder(li
 		}
 	}
 
+	u32 wireframe_present_mesh_index_buffer_iter = 0;
+
+	for (u32 i = 0; i < core->total_mesh_count; i++)
+	{
+		if (core->mesh_render_pass_data_buffer[i].wireframe_instance_count > 0)
+		{
+			core->wireframe_present_mesh_index_buffer[wireframe_present_mesh_index_buffer_iter] = i;
+			wireframe_present_mesh_index_buffer_iter++;
+		}
+	}
+
 	return LIGHTRAY_VULKAN_RESULT_SUCCESS;
 }
 
@@ -3623,8 +3647,12 @@ void lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags
 	
 	vkCmdBeginRenderPass(core->render_command_buffers[current_frame], &core->render_pass_begin_info, VK_SUBPASS_CONTENTS_INLINE);
 
-	// opaque untextured static meshes
-	vkCmdBindPipeline(core->render_command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, core->pipelines[0]); // bind wireframe pipeline. render all wireframe stuff, bind opaque untextures static mehses, and then other stuff
+	// wireframe pipeline (static meshes only)
+
+	if (core->total_wireframe_present_mesh_index_count > 0)
+	{
+		vkCmdBindPipeline(core->render_command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, core->pipelines[1]);
+	}
 
 	u64 vertex_buffer_offsets[2]{};
 	vertex_buffer_offsets[0] = core->device_local_vram_arena_suballocation_starting_offsets[LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_VERTEX_BUFFER_INDEX];
@@ -3641,9 +3669,19 @@ void lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags
 
 	vkCmdBindDescriptorSets(core->render_command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, core->pipeline_layouts[0], 0, 1, &core->descriptor_sets[0], 1, &core->perspective_camera_dynamic_offset);
 
+	for (u32 i = 0; i < core->total_wireframe_present_mesh_index_count; i++)
+	{
+		const u32 mesh_index = core->wireframe_present_mesh_index_buffer[i];
+		const u32 instance_buffer_offset = core->mesh_render_pass_data_buffer[mesh_index].instance_buffer_offset + core->mesh_render_pass_data_buffer[mesh_index].opaque_instance_count;
+		vkCmdDrawIndexed(core->render_command_buffers[current_frame], core->mesh_render_pass_data_buffer[mesh_index].index_count, core->mesh_render_pass_data_buffer[mesh_index].wireframe_instance_count, core->mesh_render_pass_data_buffer[mesh_index].index_buffer_offset, 0, instance_buffer_offset);
+	}
+
+	// opaque untextured static meshes
+	vkCmdBindPipeline(core->render_command_buffers[current_frame], VK_PIPELINE_BIND_POINT_GRAPHICS, core->pipelines[0]);
+
 	for (u32 i = core->static_mesh_render_pass_data_buffer_indices.untextured_starting_offset; i < core->static_mesh_render_pass_data_buffer_indices.untextured_range; i++)
 	{
-		vkCmdDrawIndexed(core->render_command_buffers[current_frame], core->mesh_render_pass_data_buffer[i].index_count, core->mesh_render_pass_data_buffer[i].instance_count, core->mesh_render_pass_data_buffer[i].index_buffer_offset, 0, core->mesh_render_pass_data_buffer[i].instance_buffer_offset);
+		vkCmdDrawIndexed(core->render_command_buffers[current_frame], core->mesh_render_pass_data_buffer[i].index_count, core->mesh_render_pass_data_buffer[i].opaque_instance_count, core->mesh_render_pass_data_buffer[i].index_buffer_offset, 0, core->mesh_render_pass_data_buffer[i].instance_buffer_offset);
 	}
 
 	// opaque untextured skeletal meshes
@@ -3652,7 +3690,7 @@ void lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags
 
 	for (u32 i = core->skeletal_mesh_render_pass_data_buffer_indices.untextured_starting_offset; i < core->skeletal_mesh_render_pass_data_buffer_indices.untextured_range; i++)
 	{
-		vkCmdDrawIndexed(core->render_command_buffers[current_frame], core->mesh_render_pass_data_buffer[i].index_count, core->mesh_render_pass_data_buffer[i].instance_count, core->mesh_render_pass_data_buffer[i].index_buffer_offset, 0, core->mesh_render_pass_data_buffer[i].instance_buffer_offset);
+		vkCmdDrawIndexed(core->render_command_buffers[current_frame], core->mesh_render_pass_data_buffer[i].index_count, core->mesh_render_pass_data_buffer[i].opaque_instance_count, core->mesh_render_pass_data_buffer[i].index_buffer_offset, 0, core->mesh_render_pass_data_buffer[i].instance_buffer_offset);
 	}
 
 	// opaque textured static meshes
@@ -3672,11 +3710,12 @@ void lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags
 			previous_texture_index = current_texture_index;
 		}
 
-		vkCmdDrawIndexed(core->render_command_buffers[current_frame], core->mesh_render_pass_data_buffer[i].index_count, core->mesh_render_pass_data_buffer[i].instance_count, core->mesh_render_pass_data_buffer[i].index_buffer_offset, 0, core->mesh_render_pass_data_buffer[i].instance_buffer_offset);
+		vkCmdDrawIndexed(core->render_command_buffers[current_frame], core->mesh_render_pass_data_buffer[i].index_count, core->mesh_render_pass_data_buffer[i].opaque_instance_count, core->mesh_render_pass_data_buffer[i].index_buffer_offset, 0, core->mesh_render_pass_data_buffer[i].instance_buffer_offset);
 	}
 
 	// opaque textured skeletal meshes
 	// ...
+
 	u64 vertex_buffer_offsets2[2]{};
 	vertex_buffer_offsets2[0] = core->device_local_vram_arena_suballocation_starting_offsets[LIGHTRAY_VULKAN_DEVICE_LOCAL_VRAM_ARENA_VERTEX_BUFFER_INDEX];
 	vertex_buffer_offsets2[1] = core->host_visible_vram_arena_suballocation_starting_offsets[core->host_visible_vram_arena_render_instance_glyph_buffer_starting_index];
@@ -3810,9 +3849,18 @@ void lightray_vulkan_populate_mesh_binding_offset_buffer(const lightray_vulkan_c
 {
 	for (u32 i = 0; i < core->total_mesh_count; i++)
 	{
+		const u32 instance_count = core->mesh_render_pass_data_buffer[i].opaque_instance_count + core->mesh_render_pass_data_buffer[i].wireframe_instance_count;
 		scene->mesh_binding_offsets[i].current_opaque_instance_model_index = core->mesh_render_pass_data_buffer[i].instance_buffer_offset;
-		scene->mesh_binding_offsets[i].last_opaque_instance_model_index = core->mesh_render_pass_data_buffer[i].instance_buffer_offset + core->mesh_render_pass_data_buffer[i].instance_count - 1;
-		scene->mesh_binding_metadata_buffer[i].instance_count = core->mesh_render_pass_data_buffer[i].instance_count;
+		scene->mesh_binding_offsets[i].last_opaque_instance_model_index = core->mesh_render_pass_data_buffer[i].instance_buffer_offset + instance_count - core->mesh_render_pass_data_buffer[i].wireframe_instance_count - 1;
+
+		if (core->mesh_render_pass_data_buffer[i].wireframe_instance_count > 0)
+		{
+			scene->mesh_binding_offsets[i].current_wireframe_instance_model_index = scene->mesh_binding_offsets[i].last_opaque_instance_model_index + 1;
+			scene->mesh_binding_offsets[i].last_wireframe_instance_model_index = core->mesh_render_pass_data_buffer[i].instance_buffer_offset + instance_count - 1;
+		}
+
+		scene->mesh_binding_metadata_buffer[i].opaque_instance_count = core->mesh_render_pass_data_buffer[i].opaque_instance_count;
+		scene->mesh_binding_metadata_buffer[i].wireframe_instance_count = core->mesh_render_pass_data_buffer[i].wireframe_instance_count;
 	}
 }
 
@@ -3931,8 +3979,11 @@ void lightray_vulkan_log_mesh_render_pass_data_buffer(const lightray_vulkan_core
 		SUNDER_LOG("vertex buffer offset: ");
 		SUNDER_LOG(core->mesh_render_pass_data_buffer[i].vertex_buffer_offset);
 		SUNDER_LOG("\n");
-		SUNDER_LOG("instance  count: ");
-		SUNDER_LOG(core->mesh_render_pass_data_buffer[i].instance_count);
+		SUNDER_LOG("opaque instance count: ");
+		SUNDER_LOG(core->mesh_render_pass_data_buffer[i].opaque_instance_count);
+		SUNDER_LOG("\n");
+		SUNDER_LOG("wireframe instance count: ");
+		SUNDER_LOG(core->mesh_render_pass_data_buffer[i].wireframe_instance_count);
 		SUNDER_LOG("\n");
 		SUNDER_LOG("instance buffer offset: ");
 		SUNDER_LOG(core->mesh_render_pass_data_buffer[i].instance_buffer_offset);
@@ -4105,6 +4156,32 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 			data_length = sunder_uint_to_string(*u32_ptr, temp_buffer, 10);
 		}
 
+		else if (current_type == LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_B32)
+		{
+			const b32* b32_ptr = SUNDER_CAST(b32*, current_data_ptr);
+
+			if (*b32_ptr > 0)
+			{
+				temp_buffer[0] = 't';
+				temp_buffer[1] = 'r';
+				temp_buffer[2] = 'u';
+				temp_buffer[3] = 'e';
+
+				data_length = 4;
+			}
+
+			else
+			{
+				temp_buffer[0] = 'f';
+				temp_buffer[1] = 'a';
+				temp_buffer[2] = 'l';
+				temp_buffer[3] = 's';
+				temp_buffer[4] = 'e';
+
+				data_length = 5;
+			}
+		}
+
 		else if (current_type == LIGHTRAY_OVERLAY_TEXT_ELEMENT_TYPE_STRING)
 		{
 			u32 local_counter = 0;
@@ -4157,7 +4234,7 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 			f64 pos_x = pen_x + (glyph.plane_bounds.left * scale) / core->swapchain_info.imageExtent.width;
 			f64 pos_y = baseline + (glyph.plane_bounds.bottom * scale) / core->swapchain_info.imageExtent.height;
 
-			glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos_x, pos_y, 0.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1.0f));
+			const glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos_x, pos_y, 0.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(width, height, 1.0f));
 
 			const f64 u0 = glyph.atlas_bounds.left / atlas_width;
 			const f64 v0 = (glyph.atlas_bounds.top / atlas_height);
@@ -4265,11 +4342,26 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 		{
 			const u32 transform_index = tick_data->scene->mesh_binding_buffer[i].transform_index;
 
-			const glm::vec3 pos = tick_data->scene->position_buffer[transform_index];
-			const glm::vec3 rot = tick_data->scene->rotation_buffer[transform_index];
-			const glm::vec3 scale = tick_data->scene->scale_buffer[transform_index];
+			const sunder_v3_t v3_pos = tick_data->scene->position_buffer[transform_index];
+			const sunder_v3_t v3_rot = tick_data->scene->rotation_buffer[transform_index];
+			const sunder_v3_t v3_scale = tick_data->scene->scale_buffer[transform_index];
+
+			const sunder_m4_t tm = sunder_m4_translation(v3_pos);
+			const sunder_m4_t rm = sunder_m4_identity();
+			const sunder_m4_t sm = sunder_m4_scale(v3_scale);
+
+			const sunder_quat_t q = sunder_quat_degrees(sunder_v3(0.0f, 0.0f, 1.0f), 90.0f);
+			const sunder_m4_t rrm = sunder_m4_rotation(q);
+				
+			const sunder_m4_t mm = tm * rm * sm;
+
+			const glm::vec3 pos = glm::vec3(v3_pos.x, v3_pos.y, v3_pos.z);
+			const glm::vec3 rot = glm::vec3(v3_rot.x, v3_rot.y, v3_rot.z);
+			const glm::vec3 scale = glm::vec3(v3_scale.x, v3_scale.y, v3_scale.z);
 			const glm::quat orientation = glm::quat(rot);
-			const glm::mat4 model = glm::translate(glm::mat4(1.0f), pos) * glm::mat4_cast(orientation) * glm::scale(glm::mat4(1.0f), scale);
+			glm::mat4 model{}; //glm::translate(glm::mat4(1.0f), pos) * glm::mat4_cast(orientation) * glm::scale(glm::mat4(1.0f), scale);
+
+			model = lightray_copy_sunder_m4_to_glm(mm);
 
 			const u32 instance_model_index = tick_data->scene->mesh_binding_buffer[i].instance_model_index;
 			core->cpu_side_render_instance_buffer[instance_model_index].model.model = model;
@@ -4490,7 +4582,7 @@ void lightray_vulkan_push_overlay_text_elements(lightray_vulkan_core_t* core, co
 	core->overlay_core.text_element_count = element_count;
 }
 
-void lightray_vulkan_execute_post_render_pass_flush(lightray_vulkan_core_t* core)
+void lightray_vulkan_execute_post_render_pass_state_flush(lightray_vulkan_core_t* core)
 {
 	core->overlay_core.current_glyph_render_instance_count = 0;
 }
@@ -4503,4 +4595,28 @@ f32 lightray_vulkan_normalize_width_f32(const lightray_vulkan_core_t* core, f32 
 f32 lightray_vulkan_normalize_height_f32(const lightray_vulkan_core_t* core, f32 pixels)
 {
 	return pixels / core->swapchain_info.imageExtent.height;
+}
+
+u32 lightray_vulkan_get_reordered_global_mesh_index(const lightray_vulkan_core_t* core, u32 og_mesh_index)
+{
+	return core->mesh_render_pass_data_mapping_buffer[og_mesh_index];
+}
+
+bool get_cell_from_position(const glm::vec3& pos, i32& out_row, i32& out_col, const glm::vec3& grid_origin)
+{
+	glm::vec3 local_pos = pos - grid_origin;
+
+	//i32 col = (i32)floor(local_pos.x / 1.0f);
+	i32 col = 4  - 1 - (i32)floor(local_pos.x / 1.0f);
+	i32 row = (i32)floor(local_pos.y / 1.0f);
+
+	if (col < 0 || col >= (i32)4 || row < 0 || row >= (i32)4)
+	{
+		return false;
+	}
+
+	out_col = col;
+	out_row = row;
+
+	return true;
 }
