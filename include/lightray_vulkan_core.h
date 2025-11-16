@@ -597,6 +597,7 @@ void																				lightray_vulkan_unhide_entity(lightray_vulkan_core_t* co
 void																				lightray_vulkan_move_entity(lightray_vulkan_move_entity_data_t* move_data);
 void																				lightray_vulkan_initialize_core_tick_end_data(lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_vulkan_core_tick_end_data_t* tick_data);
 void																				lightray_vulkan_tick_core_begin(lightray_vulkan_core_t* core);
+void																				lightray_vulkan_tick_core_defered(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_vulkan_core_tick_end_data_t* tick_data);
 void																				lightray_vulkan_execute_post_render_pass_state_flush(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_set_relative_path(lightray_vulkan_core_t* core, cstring_literal* path);

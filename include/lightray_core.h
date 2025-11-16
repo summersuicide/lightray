@@ -21,6 +21,9 @@
 #include <immintrin.h>
 #include "cJSON.h"
 
+// units are in meters (directional_vector(1.0f, 0.0f, 0.0f) * delta_time * speed_in_meters);
+// spatial_vector_in_meters(2.0f, 0.0f, 1.6f);
+
 #define LIGHTRAY_LOG(a) std::cout << a
 #define LIGHTRAY_WORLD_FORWARD_VECTOR 1.0f, 0.0f, 0.0f
 #define LIGHTRAY_WORLD_RIGHT_VECTOR 0.0f, -1.0f, 0.0f
@@ -38,6 +41,8 @@
 #define LIGHTRAY_MAIN_3D_CAMERA_INDEX 0u
 
 #define LIGHTRAY_KEY_BOUND(key) ((key) != LIGHTRAY_KEY_BINDING_UNBOUND)
+
+#define LIGHTRAY_DEFAULT_CUBE_SCALE_FACTOR 0.1996f
 
 enum lightray_key_binding : i32
 {
@@ -404,6 +409,10 @@ struct lightray_camera_t
 {
 	glm::vec3 position{};
 	glm::vec2 rotation{}; // yaw - x , pitch - y 
+	// sunder_v3_t position{};
+	// f32 roll = 0;
+	// f32 pitch = 0;
+	// f32 yaw = 0;
 	f32 sensitivity = 0;
 	f32 fov = 0;
 	f32 near_clip_plane_distance = 0;
@@ -593,6 +602,9 @@ struct lightray_scene_suballocation_data_t
 	u32 game_side_entity_kind_count = 0;
 	const u32* index_buffer = nullptr;
 	const lightray_vertex_t* vertex_buffer = nullptr;
+	u32 total_raycast_grid_cell_index_subarena_index_count = 0;
+	u32 total_raycast_pierce_layer_test_data_count = 0;
+	u32 total_per_frame_raycast_count = 0;
 
 	sunder_arena_t* arena = nullptr;
 };
@@ -625,18 +637,28 @@ struct lightray_mesh_binding_metadata_t
 	u32 current_wireframe_instance_binding_count = 0;
 };
 
-enum lightray_raycast_result_bits : u32
+enum lightray_raycast_bits : u32
 {
-	LIGHTRAY_RAYCAST_RESULT_BITS_AABB_HIT_BIT = 0u,
-	LIGHTRAY_RAYCAST_RESULT_BITS_COLLISION_MESH_HIT_BIT = 1u,
+	LIGHTRAY_RAYCAST_BITS_PIERCE_BIT = 1u, 
+	LIGHTRAY_RAYCAST_BITS_MAX_PIERCE_THRESHOLD_BIT = 2u,
+	LIGHTRAY_RAYCAST_BITS_HIT_ANY_BIT = 4u,
+	LIGHTRAY_RAYCAST_BITS_TRACE_LINE_BIT = 5u,
+	LIGHTRAY_RAYCAST_BITS_MARK_INTERSECTION_POINT_BIT = 6u
 };
 
-enum lightray_collision_attribute_bits : u64
+enum lightray_collision_attribute_bits : u32
 {
 	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_CAN_BE_COLLIDED_WITH_BIT = 0u,
 	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLIDES_BIT = 1u,
 	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_AABB_COLLIDES_BIT = 2u,
-	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLISION_MESHES_COLLIDE_BIT = 3u
+	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLISION_MESHES_COLLIDE_BIT = 3u,
+	LIGHTRAY_COLLISION_ATTRIBUTE_BITS_CAN_BE_TRACED_BIT = 4u
+};
+
+struct lightray_raycast_pierce_layer_t
+{
+	u16 layer = 0;
+	u16 threshold = 0;
 };
 
 struct lightray_collision_attribute_t
@@ -645,7 +667,11 @@ struct lightray_collision_attribute_t
 	u64 exception_collision_layer_bitmask = 0;
 	u64 collision_layer_result_bitmask = 0;
 	u32 game_side_entity_kind_bitmask_buffer_offset = 0;
-	u32 game_side_entity_kind = 0;
+	u16 game_side_entity_kind = 0;
+	u16 pierce_layer{}; 
+	//u32 game_side_entity_index = 0;
+	// rogue bitmask buffer offset
+	// rogue bitmask
 	u32 has_already_collided_with_bitmask_buffer_offset = 0;
 	u32 collision_layer_index_buffer_offset = 0;
 	u32 collision_layer_count = 0;
@@ -657,6 +683,15 @@ struct lightray_collision_attribute_t
 	u32 flags = 0;
 	u32 should_reproject_vertices_bitmask = 0;
 	u32 has_already_projected_vertices_bitmask = 0;
+};
+
+struct lightray_raycast_pierce_layer_test_data_t
+{
+	sunder_v3_t intersection_point{};
+	f32 squared_distance = 0.0f;
+	u32 collision_attribute_index = 0;
+	u16 previous_hit_pierce_layer = 0;
+	u16 previous_hit_applied_threshold = 0;
 };
 
 struct lightray_rotation_t
@@ -710,6 +745,7 @@ struct lightray_scene_t
 	sunder_v3_t* position_buffer = nullptr;
 	sunder_v3_t* rotation_buffer = nullptr;
 	sunder_v3_t* scale_buffer = nullptr;
+	sunder_quat_t* quat_rotation_buffer = nullptr;
 
 	sunder_arena_t collision_mesh_vertex_buffers_arena{};
 	lightray_collision_mesh_batch_t* collision_mesh_batch_buffer = nullptr;
@@ -749,6 +785,21 @@ struct lightray_scene_t
 	u32 total_grid_cell_index_count = 0;
 
 	u32 collision_attribute_current_count = 0;
+
+	////////////////////
+	u32* raycast_grid_cell_index_subarena = nullptr;
+	u32 total_raycast_grid_cell_subarena_index_count = 0;
+	u32 current_raycast_grid_cell_index_subarena_offset = 0;
+
+	u64* has_already_been_traced_bitmask_subarena = nullptr;
+	u32 total_has_already_been_traced_bitmask_count = 0;
+	u32 has_already_traced_bitmask_per_raycast_count = 0;
+	u32 current_has_already_traced_bitmask_arena_offset = 0;
+
+	lightray_raycast_pierce_layer_test_data_t* pierce_layer_test_data_subarena = nullptr;
+	u32 total_pierce_layer_test_data_count = 0;
+	u32 current_pierce_layer_test_data_subarena_offset = 0;
+	////////////////////
 
 	lightray_mesh_binding_offsets_t* mesh_binding_offsets = nullptr; // per mesh
 	lightray_mesh_binding_t* mesh_binding_buffer = nullptr; // per instance model
@@ -805,6 +856,25 @@ struct lightray_grid_t
 	f32 cell_height = 0.0f;
 };
 
+struct lightray_raycast_data_t
+{
+	const u32* collision_layer_index_buffer = nullptr;
+	const lightray_grid_t* grid = nullptr;
+	u64 collision_layer_bitmask = 0;
+	lightray_raycast_pierce_layer_t* pierce_layer_buffer = nullptr;
+	u32 pierce_layer_count = 0;
+	u32 collision_layer_index_count = 0;
+	lightray_ray_t ray{};
+	u32 has_already_been_traced_bitmask_subarena_offset = 0;
+	u32 raycast_grid_cell_index_subarena_offset = 0;
+	u32 raycast_grid_cell_index_count = 0;
+	u32 raycast_pierce_layer_test_data_subarena_offset = 0;
+	u32 raycast_pierce_layer_test_data_count = 0;
+	u32 flags = 0;
+	u32 cube_entity_index = 0;
+	u32 line_trace_entity_index = 0;
+};
+
 /*
 struct lightray_world_view_t
 {
@@ -840,9 +910,10 @@ glm::vec3												lightray_to_world_forward_from_euler(const glm::vec3& euler
 glm::vec3												lightray_to_world_forward_from_model(const glm::mat4& model_matrix, const glm::vec3& local_forward);
 glm::vec3												lightray_get_camera_forward(const glm::mat4& camera_view_matrix);
 glm::vec3												lightray_get_camera_right(const glm::mat4& camera_view_matrix);
-bool														lightray_ray_triangle_intersect(const lightray_ray_t* ray, const glm::vec3* triangle_vertices, f32* t, f32* u, f32* v);
+b32														lightray_ray_triangle_intersect(const lightray_ray_t* ray, const sunder_v3_t* triangle_vertices, f32* t, f32* u, f32* v);
 void														lightray_compute_aabb_min_max(const sunder_v3_t& position, const sunder_v3_t& scale, sunder_v3_t* min, sunder_v3_t* max);
 b32														lightray_aabbs_intersect(const sunder_v3_t& position_a, const sunder_v3_t& scale_a, const sunder_v3_t& position_b, const sunder_v3_t& scale_b);
+b32														lightray_ray_aabb_intersect(const lightray_ray_t* ray, const sunder_v3_t& aabb_position, const sunder_v3_t& aabb_scale, f32* t_hit);
 void														lightray_get_raw_vertex_positions(u32 index_buffer_offset, u32 index_count, sunder_v3_t* buffer, const lightray_vertex_t* vertex_buffer, const u32* index_buffer);
 				
 															// takes raw vertex positions and computes their positions in model space (expensive, use one of vectorized version) 
@@ -922,9 +993,11 @@ void														lightray_get_grid_cell_coordinates_aabb(const lightray_grid_t*
 u32														lightray_push_collision_attribute(lightray_scene_t* scene);
 void														lightray_bind_aabb(lightray_scene_t* scene, u32 collidable_entity_index, u32 aabb_index, u32 collision_attribute_index);
 u32														lightray_get_grid_cell_index(const lightray_grid_t* grid, u32 row_index, u32 column_index);
+sunder_v3_t											lightray_get_grid_cell_center(const lightray_grid_t* grid, u32 row_index, u32 column_index);
 
 void														lightray_log_glm_matrix(const glm::mat4& m);
 glm::mat4												lightray_copy_sunder_m4_to_glm(const sunder_m4_t& m);
+sunder_m4_t										lightray_copy_glm_mat4_to_sunder(const glm::mat4& m);
 
 void														lightray_bind_position(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index, const sunder_v3_t& relative_offset);
 
@@ -949,10 +1022,34 @@ void														lightray_enable_collision(lightray_scene_t* scene, u32 collisi
 void														lightray_disable_collision(lightray_scene_t* scene, u32 collision_attribute_index);
 void														lightray_enable_per_frame_vertex_reprojection(lightray_scene_t* scene, u32 collision_attribute_index, u32 collision_mesh_index);
 void														lightray_disable_per_frame_vertex_reprojection(lightray_scene_t* scene, u32 collision_attribute_index, u32 collision_mesh_index);
+void														lightray_add_collision_attribute_flags(lightray_scene_t* scene, u32 collision_attribute_index, u32 flags);
+void														lightray_set_pierce_layer(lightray_scene_t* scene, u32 collision_attribute_index, u16 layer);
 
 b32														lightray_collision_attribute_collides(const lightray_scene_t* scene, u32 collision_mesh_attribute_index);
 b32														lightray_collision_attribute_aabb_collides(const lightray_scene_t* scene, u32 collision_mesh_attribute_index);
 b32														lightray_collision_attribute_collision_meshes_collide(const lightray_scene_t* scene, u32 collision_mesh_attribute_index);
 b32														lightray_collision_attribute_collides_with_entity_of_kind(const lightray_scene_t* scene, u32 collision_mesh_attribute_index, u32 game_side_entity_kind);
 
+b32														lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* data, u32* out_raycast_pierce_layer_test_data_count);
+
+															// returns UINT32_MAX on failure
+void														lightray_reserve_raycast_memory(lightray_scene_t* scene, u32 raycast_grid_cell_index_per_ray, u32 raycast_pierce_layer_test_data_count_per_ray, u32* raycast_grid_cell_index_subarena_offset, u32* has_already_been_traced_bitmask_subarena, u32* raycast_pierce_layer_test_data_subarena_offset);
+void														lightray_reclaim_raycast_memory(lightray_scene_t* scene);
+
 void														lightray_set_collision_attribute_entity_kind(lightray_scene_t* scene, u32 collision_mesh_attribute_index, u32 game_side_entity_kind);
+
+lightray_ray_t										lightray_ray(const sunder_v3_t& origin, const sunder_v3_t& direction, f32 distance);
+
+f32														lightray_get_default_cube_grid_scale_x(const lightray_grid_t* grid);
+f32														lightray_get_default_cube_grid_scale_y(const lightray_grid_t* grid);
+u32														lightray_traverse_grid(u32 index, i32 direction);
+
+															// returns UINT32_MAX on failure
+u32														lightray_handle_grid_traversal_aftermath(const lightray_grid_t* grid, sunder_v3_t* position_buffer, sunder_v3_t* scale_buffer, const lightray_ray_t* aabb_intersection_ray, u32 cube_entity_index, u32 row_index, u32 column_index, u32 previous_grid_cell_index, u32* next_row_index, u32* next_column_index);
+
+bool														lightray_quick_sort_compare_raycast_pierce_layer_test_data_squared_distance_less(const lightray_raycast_pierce_layer_test_data_t* i, const lightray_raycast_pierce_layer_test_data_t* j);
+
+SUNDER_DEFINE_QUICK_SORT_PARTITION_FUNCTION(lightray_raycast_pierce_layer_test_data_t, raycast_pierce_layer_test_data, lightray)
+SUNDER_DEFINE_QUICK_SORT_FUNCTION(lightray_raycast_pierce_layer_test_data_t, raycast_pierce_layer_test_data, lightray)
+
+u16														lightray_get_pierce_layer_hit_count(u16 initial_threshold, u16 applied_at_hit);
