@@ -4345,9 +4345,10 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 			const sunder_v3_t v3_pos = tick_data->scene->position_buffer[transform_index];
 			const sunder_v3_t v3_rot = tick_data->scene->rotation_buffer[transform_index];
 			const sunder_v3_t v3_scale = tick_data->scene->scale_buffer[transform_index];
+			const sunder_quat_t quat_rot = tick_data->scene->quat_rotation_buffer[transform_index];
 
 			const sunder_m4_t tm = sunder_m4_translation(v3_pos);
-			const sunder_m4_t rm = sunder_m4_identity();
+			const sunder_m4_t rm = sunder_m4_rotation(quat_rot);
 			const sunder_m4_t sm = sunder_m4_scale(v3_scale);
 
 			const sunder_quat_t q = sunder_quat_degrees(sunder_v3(0.0f, 0.0f, 1.0f), 90.0f);
@@ -4619,4 +4620,10 @@ bool get_cell_from_position(const glm::vec3& pos, i32& out_row, i32& out_col, co
 	out_row = row;
 
 	return true;
+}
+
+void lightray_vulkan_tick_core_defered(lightray_vulkan_core_t* core)
+{
+	// process collision grid stuff
+	// update model matrices
 }
