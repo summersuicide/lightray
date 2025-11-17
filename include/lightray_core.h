@@ -313,6 +313,24 @@ struct lightray_orthographic_bounds_t
 	f64 bottom;
 };
 
+struct lightray_overlay_element_t
+{
+	sunder_v3_t color{};
+	sunder_v2_t position{};
+	u32 texture_index = 0;
+	f32 scale = 0.0f;
+	f32 theta = 0.0f;
+};
+
+struct lightray_overlay_layer_t
+{
+	u32 parent_layer = 0;
+	u32 overlay_element_buffer_offset = 0;
+	u32 overlay_element_count = 0;
+	u32 overlay_text_element_buffer_offset = 0;
+	u32 overlay_text_element_count = 0;
+};
+
 struct lightray_glyph_t
 {
 	f64 advance;
@@ -369,7 +387,6 @@ struct lightray_overlay_text_element_t
 	lightray_overlay_text_element_type type{};
 	f32 glyph_size = 0; // in pixels
 	u32 precision = 0; // only for floats
-	// u32 sprite_index
 };
 
 struct lightray_overlay_core_t
@@ -424,6 +441,9 @@ struct lightray_camera_t
 	lightray_camera_projection_kind projection_kind = LIGHTRAY_CAMERA_PROJECTION_KIND_UNDEFINED;
 	bool first_tick = true;
 	bool vulkan_y_flip = true;
+	// f32 roll_tilt;
+	// f32 pitch_tilt;
+	// f32 yaw_tilt;
 };
 
 struct lightray_camera_initialization_data_t
@@ -578,7 +598,8 @@ enum lightray_entity_kind : u32
 
 enum lightray_entity_bits : u32
 {
-	LIGHTRAY_ENTITY_BITS_OF_COLLIDABLE_KIND_BIT = 1u, // entity that has aabb, or maybe collision mesh entities bound to it. aabb, collision mesh entities ARE NOT considered of collidable kind
+	LIGHTRAY_ENTITY_BITS_OF_COLLIDABLE_KIND_BIT = 0u, // entity that has aabb, or maybe collision mesh entities bound to it. aabb, collision mesh entities ARE NOT considered of collidable kind
+	LIGHTRAY_ENTITY_BITS_UNDO_CAMERA_TILT_BIT = 1u
 };
 
 struct lightray_entity_t
@@ -589,6 +610,9 @@ struct lightray_entity_t
 	u32 instance_model_binding_index;
 	u32 entity_binding_index;
 	u32 flags;
+	// u32 camera_binding_index = 0;
+	// u32 entity_binding_index = 0;
+	// u32 bone_binding_index = 0; // computed bone transform matrix buffer index
 };
 
 struct lightray_scene_suballocation_data_t
@@ -613,6 +637,8 @@ struct lightray_mesh_binding_t
 {
 	u32 transform_index = 0;
 	u32 instance_model_index = 0;
+	u32 bone_node_mapping_index = 0;
+	b32 bound_to_camera = SUNDER_FALSE;
 };
 
 struct lightray_mesh_binding_result_t
@@ -971,7 +997,7 @@ u32														lightray_get_suitable_position_key_index(const lightray_animati
 glm::vec3												lightray_compute_interpolated_animation_channel_scale_key(const lightray_animation_channel_t* channel, const lightray_animation_key_vec3_t* scale_key_buffer, f32 animation_in_ticks);
 glm::quat												lightray_compute_interpolated_animation_channel_rotation_key(const lightray_animation_channel_t* channel, const lightray_animation_key_quat_t* rotation_key_buffer, f32 animation_in_ticks);
 glm::vec3												lightray_compute_interpolated_animation_channel_position_key(const lightray_animation_channel_t* channel, const lightray_animation_key_vec3_t* position_key_buffer, f32 animation_in_ticks);
-void														lightray_compute_interpolated_skeleton_transform(lightray_animation_core_t* animation_core, u32 animation_index, u32 skeleton_index, u32 instance_index);
+void														lightray_compute_interpolated_skeleton_transform(lightray_animation_core_t* animation_core, u32 animation_index, u32 skeleton_index, u32 instance_index, u32 animation_playback_index);
 
 u32														lightray_compute_skeletal_mesh_bone_count_with_respect_to_instance_count(u32 bone_count, u32 instance_count);
 u32														lightray_compute_computed_bone_transform_matrix_buffer_offset_with_respect_to_instance(u32 instance_index, u32 bone_count, u32 base_offset);
@@ -979,7 +1005,7 @@ u32														lightray_compute_computed_bone_transform_matrix_buffer_offset_w
 void														lightray_assimp_get_node_hierarchy_metadata(const aiNode* node, u32* total_node_count, u64* aligned_name_byte_code_size, u32 alignment);
 void														lightray_populate_node_related_string_upon_suballocation(sunder_arena_t* arena, sunder_string_t* host, cstring_literal* string, u32 length);
 void														lightray_assimp_execute_first_node_buffer_population_pass(const aiNode* node, lightray_node_t* node_buffer, sunder_arena_t* arena, sunder_string_t* names, u32* current_index);
-void														lightray_assimp_execute_second_node_buffer_population_pass(const aiNode* node, lightray_node_t* node_buffer, u32 node_count, const sunder_string_t* names, u32* current_index);
+void														lightray_assimp_execute_second_node_buffer_population_pass(const aiNode* node, lightray_node_t* node_buffer, u32 node_count, const sunder_string_t* names, u32* current_index, u32 node_buffer_offset);
 
 u32														lightray_get_skeletal_mesh_global_mesh_index(u32 skeletal_mesh_index, u32 static_mesh_count);
 glm::vec2												lightray_get_cursor_position(GLFWwindow* window);
@@ -1053,3 +1079,6 @@ SUNDER_DEFINE_QUICK_SORT_PARTITION_FUNCTION(lightray_raycast_pierce_layer_test_d
 SUNDER_DEFINE_QUICK_SORT_FUNCTION(lightray_raycast_pierce_layer_test_data_t, raycast_pierce_layer_test_data, lightray)
 
 u16														lightray_get_pierce_layer_hit_count(u16 initial_threshold, u16 applied_at_hit);
+
+u32														lightray_get_bone_computed_transform_matrix_buffer_index(const lightray_animation_core_t* animation_core, cstring_literal* bone_name, u32 skeleton_index, u32 instance_index);
+sunder_m4_t										lightray_get_bone_m4(const lightray_animation_core_t* animation_core, u32 bone_computed_transform_matrix_buffer_index);
