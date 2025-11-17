@@ -2041,6 +2041,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		}
 	}
 
+	SUNDER_LOG("\n\nanimation channel name buffer\n");
 	for (u32 i = 0; i < core->animation_core.total_animation_channel_count; i++)
 	{
 		SUNDER_LOG("\n");
@@ -2063,6 +2064,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		}
 	}
 	
+	SUNDER_LOG("\n\nbone name buffer\n");
 	for (u32 i = 0; i < core->animation_core.total_bone_count; i++)
 	{
 		SUNDER_LOG("\n");
@@ -2078,8 +2080,9 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	{
 		core->animation_core.skeleton_buffer[skeleton_buffer_iter].node_buffer_offset = current_skeletal_mesh_node_buffer_index_first_pass;
 		lightray_assimp_execute_first_node_buffer_population_pass(scenes[i]->mRootNode, core->animation_core.node_buffer, &core->general_purpose_ram_arena, core->animation_core.node_names,  &current_skeletal_mesh_node_buffer_index_first_pass);
-		core->animation_core.skeleton_buffer[skeleton_buffer_iter].node_count = current_skeletal_mesh_node_buffer_index_first_pass;
-		lightray_assimp_execute_second_node_buffer_population_pass(scenes[i]->mRootNode, core->animation_core.node_buffer, core->animation_core.skeleton_buffer[skeleton_buffer_iter].node_count, core->animation_core.node_names, &current_skeletal_mesh_node_buffer_index_second_pass);
+		core->animation_core.skeleton_buffer[skeleton_buffer_iter].node_count = current_skeletal_mesh_node_buffer_index_first_pass - core->animation_core.skeleton_buffer[skeleton_buffer_iter].node_buffer_offset;
+		lightray_assimp_execute_second_node_buffer_population_pass(scenes[i]->mRootNode, core->animation_core.node_buffer, core->animation_core.skeleton_buffer[skeleton_buffer_iter].node_count, core->animation_core.node_names, &current_skeletal_mesh_node_buffer_index_second_pass, core->animation_core.skeleton_buffer[skeleton_buffer_iter].node_buffer_offset);
+		skeleton_buffer_iter++;
 	}
 
 	for (u32 i = 0; i < core->animation_core.total_node_count; i++)
@@ -2133,6 +2136,10 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		SUNDER_LOG(core->animation_core.skeleton_buffer[i].computed_bone_transform_matrix_buffer_offset);
 		SUNDER_LOG("\ncomputed_bone_transform_matrix_buffer_bone_count: ");
 		SUNDER_LOG(core->animation_core.skeleton_buffer[i].computed_bone_transform_matrix_buffer_bone_count);
+		SUNDER_LOG("\nnode_buffer_offset: ");
+		SUNDER_LOG(core->animation_core.skeleton_buffer[i].node_buffer_offset);
+		SUNDER_LOG("\nnode_count: ");
+		SUNDER_LOG(core->animation_core.skeleton_buffer[i].node_count);
 		SUNDER_LOG("\n=================================================================\n");
 	}
 
@@ -2206,6 +2213,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	}
 
 	// 3rd node buffer population pass
+	
 	for (u32 i = 0; i < core->animation_core.total_skeleton_count; i++)
 	{
 		const lightray_skeleton_t current_skeleton = core->animation_core.skeleton_buffer[i];
@@ -2293,6 +2301,8 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 				core->animation_core.bone_bind_pose_matrix_buffer[current_bone_index] = core->animation_core.global_root_inverse_matrix_buffer[skeleton_buffer_iter] * core->animation_core.node_buffer[current_node_index].global_transform_matrix * core->animation_core.bone_buffer[current_bone_index].inverse_bind_pose_matrix;
 			}
 		}
+
+		skeleton_buffer_iter++;
 	}
 
 	for (u32 i = 0; i < core->cpu_side_instance_count; i++)
@@ -2437,10 +2447,12 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	{
 		const aiMesh* current_mesh = meshes[i];
 
+		//SUNDER_LOG("\n\n============================================================\n\n");
+
 		for (u32 j = 0; j < current_mesh->mNumBones; j++)
 		{
 			const aiBone* current_bone = current_mesh->mBones[j];
-			const u32 current_bone_index = j + core->animation_core.skeleton_buffer[skeleton_buffer_iter].bone_buffer_offset;
+			const u32 current_bone_index = j;// + core->animation_core.skeleton_buffer[skeleton_buffer_iter].bone_buffer_offset;
 			u32 ct = 0;
 
 			for (u32 k = 0; k < current_bone->mNumWeights; k++)
@@ -2467,10 +2479,10 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 						break;
 					}
 
-					else
-					{
-						SUNDER_LOG("\nCURRENT WEIGHT VALUE IS NOT ZERO\n");
-					}
+					//else
+					//{
+						//SUNDER_LOG("\nCURRENT WEIGHT VALUE IS NOT ZERO\n");
+					//}
 				}
 			}
 		}
@@ -3896,6 +3908,12 @@ u32 lightray_vulkan_push_animation_playback_command(lightray_vulkan_core_t* core
 {
 	const u32 index = core->animation_core.playback_command_count;
 
+	if (!(sunder_valid_index(index, core->animation_core.total_playback_command_count)))
+	{
+		return UINT32_MAX;
+	}
+
+
 	if (loop)
 	{
 		SUNDER_SET_BIT(core->animation_core.looped_playback_flags, index, 1ull);
@@ -4096,7 +4114,7 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 				const f32 animation_ticks = SUNDER_CAST2(f32)fmod(time_in_ticks, core->animation_core.animation_buffer[current_animation_index].duration);
 				core->animation_core.playback_command_buffer[i].ticks = animation_ticks;
 
-				lightray_compute_interpolated_skeleton_transform(&core->animation_core, current_animation_index, current_skeleton_index, current_instance_index);
+				lightray_compute_interpolated_skeleton_transform(&core->animation_core, current_animation_index, current_skeleton_index, current_instance_index, i);
 				SUNDER_ZERO_BIT(core->animation_core.playback_flags, i, 1ull);
 			}
 
@@ -4115,13 +4133,13 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 
 					SUNDER_ZERO_BIT(core->animation_core.playback_flags, i, 1ull);
 
-					lightray_compute_interpolated_skeleton_transform(&core->animation_core, current_animation_index, current_skeleton_index, current_instance_index);
+					lightray_compute_interpolated_skeleton_transform(&core->animation_core, current_animation_index, current_skeleton_index, current_instance_index, i);
 				}
 
 				// computes the full pose across frames and hangs at the last frame (ex. 0 -> 19)
 				else
 				{
-					lightray_compute_interpolated_skeleton_transform(&core->animation_core, current_animation_index, current_skeleton_index, current_instance_index);
+					lightray_compute_interpolated_skeleton_transform(&core->animation_core, current_animation_index, current_skeleton_index, current_instance_index, i);
 				}
 			}
 		}
@@ -4134,6 +4152,12 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 	for (u32 i = 0; i < core->overlay_core.text_element_count; i++)
 	{
 		const lightray_overlay_text_element_type current_type = core->overlay_core.text_element_buffer[i].type;
+
+		if (core->overlay_core.text_element_buffer[i].data == nullptr)
+		{
+			continue;
+		}
+
 		const void* current_data_ptr = core->overlay_core.text_element_buffer[i].data;
 		char temp_buffer[50]{};
 		i32 data_length = 0;
@@ -4341,26 +4365,113 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 		if (SUNDER_IS_ANY_BIT_SET(tick_data->scene->visibility_flags, i, 1ull))
 		{
 			const u32 transform_index = tick_data->scene->mesh_binding_buffer[i].transform_index;
+			const u32 bone_node_mapping_index = tick_data->scene->mesh_binding_buffer[i].bone_node_mapping_index;
+			const b32 bound_to_camera = tick_data->scene->mesh_binding_buffer[i].bound_to_camera;
 
-			const sunder_v3_t v3_pos = tick_data->scene->position_buffer[transform_index];
-			const sunder_v3_t v3_rot = tick_data->scene->rotation_buffer[transform_index];
-			const sunder_v3_t v3_scale = tick_data->scene->scale_buffer[transform_index];
-			const sunder_quat_t quat_rot = tick_data->scene->quat_rotation_buffer[transform_index];
+			glm::mat4 model{};
+			sunder_m4_t mm{};
 
-			const sunder_m4_t tm = sunder_m4_translation(v3_pos);
-			const sunder_m4_t rm = sunder_m4_rotation(quat_rot);
-			const sunder_m4_t sm = sunder_m4_scale(v3_scale);
+			if (bound_to_camera)
+			{
+				glm::mat4 cam_world = glm::inverse(core->cvp_buffer[0].view);
+				const sunder_m4_t cam_world_sunder = lightray_copy_glm_mat4_to_sunder(cam_world);
 
-			const sunder_quat_t q = sunder_quat_degrees(sunder_v3(0.0f, 0.0f, 1.0f), 90.0f);
-			const sunder_m4_t rrm = sunder_m4_rotation(q);
+				const sunder_v3_t local_pos = tick_data->scene->position_buffer[transform_index];
+				const sunder_quat_t local_rot = tick_data->scene->quat_rotation_buffer[transform_index];
+
+				// camera local forward
+				sunder_v3_t converted_local_pos{};
+				converted_local_pos.z = -local_pos.x;
+
+				// camera local right
+				converted_local_pos.x = -local_pos.y; 
+
+				//  camera local up
+				converted_local_pos.y = local_pos.z;
+
+				const sunder_m4_t local_tm = sunder_m4_translation(converted_local_pos);
+				const sunder_m4_t local_rm = sunder_m4_rotation(local_rot);
+
+				mm = cam_world_sunder * local_tm * local_rm;
+			}
+
+			else if (bone_node_mapping_index != UINT32_MAX)
+			{
+				////////////////////////////////////////////////////////////////////////////////////////////
+				/*
+				const sunder_m4_t  bone_transform = lightray_copy_glm_mat4_to_sunder(core->animation_core.computed_bone_matrix_buffer[4]);
+				const sunder_v3_t local_pos = tick_data->scene->position_buffer[transform_index];
+				const sunder_quat_t local_rot = tick_data->scene->quat_rotation_buffer[transform_index];
+
+				const sunder_m4_t shotgun_mm = lightray_copy_glm_mat4_to_sunder(core->cpu_side_render_instance_buffer[tick_data->scene->mesh_binding_buffer[23].instance_model_index].model.model);
+
+				//const sunder_m4_t bone_world = shotgun_mm * bone_transform;
+
+				//const sunder_m4_t tm = sunder_m4_translation(local_pos);
+				//const sunder_m4_t rm = sunder_m4_rotation(local_rot);
+
+				//mm = bone_world * tm * rm;
+
+				const sunder_m4_t bone_world = bone_transform;
+
+				const sunder_m4_t tm = sunder_m4_translation(local_pos);
+				const sunder_m4_t rm = sunder_m4_rotation(local_rot);
+
+				const sunder_m4_t bone_attachment = bone_world * tm * rm;
+				mm = shotgun_mm * bone_attachment;
+				*/
+				////////////////////////////////////////////////////////////////////////////////////////////
+
+				const sunder_m4_t  bone_transform = lightray_copy_glm_mat4_to_sunder(core->animation_core.computed_bone_matrix_buffer[4]);
+
+				glm::mat4 cam_world = glm::inverse(core->cvp_buffer[0].view);
+				const sunder_m4_t cam_world_sunder = lightray_copy_glm_mat4_to_sunder(cam_world);
+
+				const sunder_v3_t local_pos = tick_data->scene->position_buffer[transform_index];
+				const sunder_quat_t local_rot = tick_data->scene->quat_rotation_buffer[transform_index];
+	
+				const sunder_m4_t local_tm = sunder_m4_translation(local_pos);
+				const sunder_m4_t local_rm = sunder_m4_rotation(local_rot);
+
+				const sunder_v3_t shotgun_local_pos = tick_data->scene->position_buffer[23];
+				const sunder_quat_t shotgun_local_rot = tick_data->scene->quat_rotation_buffer[23];
+
+				sunder_v3_t converted_shotgun_local_pos{};
+				converted_shotgun_local_pos.z = -shotgun_local_pos.x;
+
+				// camera local right
+				converted_shotgun_local_pos.x = -shotgun_local_pos.y;
+
+				//  camera local up
+				converted_shotgun_local_pos.y = shotgun_local_pos.z;
+
+				const sunder_m4_t shotgun_local_tm = sunder_m4_translation(converted_shotgun_local_pos);
+				const sunder_m4_t shotgun_local_rm = sunder_m4_rotation(shotgun_local_rot);
+
+				const sunder_m4_t shotgun_world = cam_world_sunder * shotgun_local_tm * shotgun_local_rm;
+				const sunder_m4_t attached_offset = shotgun_world * local_tm;
+
+				mm = attached_offset * bone_transform;
+
+				mm = mm * local_rm;
+			}
+
+			else
+			{
+				const sunder_v3_t v3_pos = tick_data->scene->position_buffer[transform_index];
+				const sunder_v3_t v3_rot = tick_data->scene->rotation_buffer[transform_index];
+				const sunder_v3_t v3_scale = tick_data->scene->scale_buffer[transform_index];
+				const sunder_quat_t quat_rot = tick_data->scene->quat_rotation_buffer[transform_index];
+
+				const sunder_m4_t tm = sunder_m4_translation(v3_pos);
+				const sunder_m4_t rm = sunder_m4_rotation(quat_rot);
+				const sunder_m4_t sm = sunder_m4_scale(v3_scale);
+
+				const sunder_quat_t q = sunder_quat_degrees(sunder_v3(0.0f, 0.0f, 1.0f), 90.0f);
+				const sunder_m4_t rrm = sunder_m4_rotation(q);
 				
-			const sunder_m4_t mm = tm * rm * sm;
-
-			const glm::vec3 pos = glm::vec3(v3_pos.x, v3_pos.y, v3_pos.z);
-			const glm::vec3 rot = glm::vec3(v3_rot.x, v3_rot.y, v3_rot.z);
-			const glm::vec3 scale = glm::vec3(v3_scale.x, v3_scale.y, v3_scale.z);
-			const glm::quat orientation = glm::quat(rot);
-			glm::mat4 model{}; //glm::translate(glm::mat4(1.0f), pos) * glm::mat4_cast(orientation) * glm::scale(glm::mat4(1.0f), scale);
+				mm = tm * rm * sm;
+			}
 
 			model = lightray_copy_sunder_m4_to_glm(mm);
 
@@ -4393,6 +4504,15 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 			current_step += cvp_step;
 		}
 	}
+
+	//for (u32 i = 0; i < core->animation_core.total_computed_bone_transform_matrix_buffer_bone_count; i++)
+	//{
+	//	SUNDER_LOG("\n");
+	//	SUNDER_LOG(i);
+	//	SUNDER_LOG(" | ");
+	//	const sunder_m4_t bm = lightray_copy_glm_mat4_to_sunder(core->animation_core.computed_bone_matrix_buffer[i]);
+	//	sunder_log_m4(bm);
+	//}
 
 	const u64 instance_model_buffer_bytes_written = sunder_copy_buffer(core->cpu_side_host_visible_vram_arena_view, core->cpu_side_render_instance_buffer, &tick_data->instance_model_buffer_copy_data);
 	const u64 computed_bone_matrix_buffer_bytes_written = sunder_copy_buffer(core->cpu_side_host_visible_storage_vram_arena_view, core->animation_core.computed_bone_matrix_buffer, &tick_data->computed_bone_matrix_buffer_copy_data);
