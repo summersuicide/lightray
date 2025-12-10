@@ -386,11 +386,13 @@ struct lightray_vulkan_core_t
 
 	lightray_console_t console;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// pull the whole camera thing into a lightray_entity_core_t and put it in the vulkan core
 	lightray_cvp_t* cvp_buffer;
-	lightray_camera_t* camera_buffer;
+	lightray_camera_attribute_t* camera_attribute_buffer;
 	u32 perspective_camera_dynamic_offset;
 	u32 overlay_camera_dynamic_offset;
-	u32 total_camera_count;
+	u16 current_camera_attribute_count;
+	u16 total_camera_attribute_count;
 	u32 bound_perspective_camera_index;
 	////////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -590,8 +592,9 @@ void																				lightray_vulkan_uncap_fps(lightray_vulkan_core_t* core);
 bool																				lightray_vulkan_is_fps_capped(const lightray_vulkan_core_t* core);
 void																				lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightray_vulkan_core_initialization_data_t* initialization_data);
 void																				lightray_vulkan_terminate_core(lightray_vulkan_core_t* core);
-void																				lightray_vulkan_initialize_camera(lightray_vulkan_core_t* core, const lightray_camera_initialization_data_t* initialization_data);
-void																				lightray_vulkan_set_camera_fov(lightray_vulkan_core_t* core, u32 camera_index, f32 desired_fov);
+u16																				lightray_vulkan_push_camera(lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_camera_attribute_t* camera_attribute, u32 entity_index);
+void																				lightray_vulkan_set_camera_fov(lightray_vulkan_core_t* core, u32 camera_attribute_index, f32 desired_fov);
+void																				lightray_vulkan_set_camera_view(lightray_vulkan_core_t* core, lightray_scene_t* scene, const sunder_v3_t& direction, const sunder_v3_t& up, u32 camera_attribute_index);
 void																				lightray_vulkan_hide_entity(lightray_vulkan_core_t* core, u32 entity_index, lightray_scene_t* scene);
 void																				lightray_vulkan_unhide_entity(lightray_vulkan_core_t* core, u32 entity_index, lightray_scene_t* scene);
 void																				lightray_vulkan_move_entity(lightray_vulkan_move_entity_data_t* move_data);
@@ -610,12 +613,14 @@ void																				lightray_vulkan_populate_mesh_binding_offset_buffer(cons
 
 																					// size can be left 0 for each mesh type and in that case nullptr can be passed as buffers safely. however, if size is > 0, the validity of the pointer will not be checked, because fuck you
 u32																				lightray_vulkan_get_total_mesh_instance_count(const lightray_vulkan_static_mesh_metadata_t* static_mesh_metadata_buffer, u32 static_mesh_count, const lightray_vulkan_skeletal_mesh_metadata_t* skeletal_mesh_metadata_buffer, u32 skeletal_mesh_count);
-lightray_camera_t*														lightray_vulkan_get_camera(const lightray_vulkan_core_t* core, u32 camera_index);
-lightray_vulkan_result													lightray_vulkan_bind_perspective_camera(lightray_vulkan_core_t* core, u32 camera_index);
-lightray_vulkan_result													lightray_vulkan_bind_overlay_camera(lightray_vulkan_core_t* core, u32 camera_index);
+lightray_camera_attribute_t*										lightray_vulkan_get_camera_attribute(const lightray_vulkan_core_t* core, u32 camera_attribute_index);
+lightray_vulkan_result													lightray_vulkan_bind_perspective_camera(lightray_vulkan_core_t* core, u32 camera_attribute_index);
+lightray_vulkan_result													lightray_vulkan_bind_overlay_camera(lightray_vulkan_core_t* core, u32 camera_attribute_index);
 
 void																				lightray_vulkan_do_glyph_stuff(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_push_overlay_text_elements(lightray_vulkan_core_t* core, const lightray_overlay_text_element_t* text_elements, u32 element_count);
+void																				lightray_vulkan_push_debug_overlay_text_elements(lightray_vulkan_core_t* core, const lightray_overlay_text_element_t* text_elements, u32 element_count); // output to the console, suballocates space from internal arena to hold data, until manually flushed
+void																				lightray_vulkan_push_temporary_overlay_text_elements(lightray_vulkan_core_t* core, const lightray_overlay_text_element_t* text_elements, u32 element_count); // outputs to the main screen, for as long as the lifetime, suballocates from internal arena aswell, and when all lifetimes are up, flushes everything
 void																				lightray_vulkan_render_static_overlay_layers();
 f32																				lightray_vulkan_normalize_width_f32(const lightray_vulkan_core_t* core, f32 pixels);
 f32																				lightray_vulkan_normalize_height_f32(const lightray_vulkan_core_t* core, f32 pixels);
@@ -628,13 +633,24 @@ lightray_vulkan_result													lightray_vulkan_play_animation(lightray_vulka
 void																				lightray_vulkan_apply_bind_pose(lightray_vulkan_core_t* core, u32 skeleton_index, u32 instance_index);
 
 
-u32																				lightray_vulkan_get_reordered_global_mesh_index(const lightray_vulkan_core_t* core, u32 og_mesh_index);
+u32																				lightray_vulkan_get_reordered_global_mesh_index(const lightray_vulkan_core_t* core, u32 global_mesh_index);
 
 																					// returns a structure with runtime, setup time indices for access
 lightray_vulkan_runtime_asset_loading_result_t			lightray_vulkan_load_asset_runtime(lightray_vulkan_core_t* core, const lightray_vulkan_runtime_asset_loading_data_t* loading_data);
 
-																					// returns a bit mask of 'lightray_raycast_result_bits' enum. 0 if none hit
-u32																				lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, const lightray_ray_t* ray, u64 collision_layers);
+b32																				lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_raycast_data_t* data, u32* out_raycast_pierce_layer_test_data_count, u16* external_inverse_written_count, sunder_m4_t* external_inverse_buffer);
+
+void																				lightray_vulkan_collision_test0(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale, u32* grid_cell_index_buffer, u32* grid_cell_index_count);
+void																				lightray_vulkan_collision_test_reset(lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, u32* grid_cell_index_buffer, u32 grid_cell_index_count);
+b32																				lightray_vulkan_collision_test1(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale, u32 line_entity_index);
+b32																				lightray_vulkan_collision_attribute_collides_immediate(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale);
+
+																					// load things as batches in simd registers and only then call these routines in parallel??
+void																				lightray_vulkan_push_future_transform(lightray_vulkan_core_t* core, lightray_scene_t* scene, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale);
+void																				lightray_vulkan_populate_collision_grid(lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid);
+void																				lightray_vulkan_handle_collision(lightray_vulkan_core_t* core, lightray_scene_t* scene, u32 collision_attribute_index, f32 continuous_detection_threshold);
+sunder_v3_t																	lightray_vulkan_project_capsule_onto_plane(const lightray_vulkan_core_t* core, lightray_grid_t* grid, lightray_scene_t* scene, const sunder_v3_t& pre_raycast_capsule_position, u32 capsule_collision_mesh_batch_index, u32 capsule_collision_mesh_index, u32 cube_entity_index, u32 line_trace_entity_index);
+
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 //																																				INTERNAL API FUNCTIONS																																												 //
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
