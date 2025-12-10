@@ -172,7 +172,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	core->animation_core.total_skeleton_count = initialization_data->skeletal_mesh_count;
 	core->total_mesh_count = initialization_data->static_mesh_count + initialization_data->skeletal_mesh_count;
 	core->animation_core.total_animation_count = initialization_data->animation_count;
-	core->total_camera_count = initialization_data->camera_count;
+	core->total_camera_attribute_count = initialization_data->camera_count;
 	core->animation_core.total_playback_command_count = initialization_data->animation_playback_command_count;
 	core->overlay_core.total_font_atlas_count = initialization_data->msdf_font_atlas_count;
 	core->overlay_core.total_glyph_count = glyph_count;
@@ -190,7 +190,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	const u32 animation_range = animation_starting_offset + initialization_data->animation_count;
 
 	const u32 device_local_vram_arena_allocation_count = 2u; // vertex buffer / index buffer
-	const u32 host_visible_vram_arena_allocation_count = 4u + core->total_texture_count + core->total_camera_count; // cvp_buffer[..], vertex_buffer, index_buffer, render_instance_buffer, render_instance_glyph_buffer, texture_staging_buffer[..]
+	const u32 host_visible_vram_arena_allocation_count = 4u + core->total_texture_count + core->total_camera_attribute_count; // cvp_buffer[..], vertex_buffer, index_buffer, render_instance_buffer, render_instance_glyph_buffer, texture_staging_buffer[..]
 	const u32 host_visible_storage_vram_arena_allocation_count = 1u;
 
 	core->device_local_vram_arena_suballocation_starting_offset_count = device_local_vram_arena_allocation_count;
@@ -360,8 +360,8 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	core->cpu_side_instance_count = total_instance_model_count;
 
 	{
-		aligned_allocation_size_buffer[0]	= sunder_compute_aligned_allocation_size(sizeof(lightray_camera_t), core->total_camera_count, initialization_data->arena_alignment); // camera_buffer
-		aligned_allocation_size_buffer[1] = sunder_compute_aligned_allocation_size(sizeof(lightray_cvp_t), core->total_camera_count, initialization_data->arena_alignment); // cvp_buffer
+		aligned_allocation_size_buffer[0]	= sunder_compute_aligned_allocation_size(sizeof(lightray_camera_attribute_t), core->total_camera_attribute_count, initialization_data->arena_alignment); // camera_buffer
+		aligned_allocation_size_buffer[1] = sunder_compute_aligned_allocation_size(sizeof(lightray_cvp_t), core->total_camera_attribute_count, initialization_data->arena_alignment); // cvp_buffer
 		aligned_allocation_size_buffer[2] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_playback_command_t), initialization_data->animation_playback_command_count, initialization_data->arena_alignment); // animaiton_playback_command_buffer
 		aligned_allocation_size_buffer[3] = sunder_compute_aligned_allocation_size(sizeof(lightray_node_t), total_node_count, initialization_data->arena_alignment); // node_buffer
 		aligned_allocation_size_buffer[4] = sunder_compute_aligned_allocation_size(sizeof(lightray_bone_t), core->animation_core.total_bone_count, initialization_data->arena_alignment); // bone_buffer
@@ -555,10 +555,10 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		const sunder_arena_suballocation_result_t animation_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_animation_t), core->animation_core.total_animation_count), alignof(lightray_animation_t));
 		core->animation_core.animation_buffer = SUNDER_CAST(lightray_animation_t*, animation_buffer_suballocatinon_result.data);
 
-		const sunder_arena_suballocation_result_t camera_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_camera_t), core->total_camera_count), alignof(lightray_camera_t));
-		core->camera_buffer = SUNDER_CAST(lightray_camera_t*, camera_buffer_suballocatinon_result.data);
+		const sunder_arena_suballocation_result_t camera_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_camera_attribute_t), core->total_camera_attribute_count), alignof(lightray_camera_attribute_t));
+		core->camera_attribute_buffer = SUNDER_CAST(lightray_camera_attribute_t*, camera_buffer_suballocatinon_result.data);
 
-		const sunder_arena_suballocation_result_t cvp_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_cvp_t), core->total_camera_count), alignof(lightray_cvp_t));
+		const sunder_arena_suballocation_result_t cvp_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_cvp_t), core->total_camera_attribute_count), alignof(lightray_cvp_t));
 		core->cvp_buffer = SUNDER_CAST(lightray_cvp_t*, cvp_buffer_suballocatinon_result.data);
 
 		const sunder_arena_suballocation_result_t font_atlas_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_font_atlas_t), 1), alignof(lightray_font_atlas_t));
@@ -1106,7 +1106,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 
 	{
 		u64 host_visible_vram_arena_allocation_size_buffer[6]{};
-		host_visible_vram_arena_allocation_size_buffer[0] = sunder_compute_aligned_array_allocation_size(sizeof(lightray_cvp_t), core->total_camera_count, uniform_buffer_required_alignment); // cvp_buffer
+		host_visible_vram_arena_allocation_size_buffer[0] = sunder_compute_aligned_array_allocation_size(sizeof(lightray_cvp_t), core->total_camera_attribute_count, uniform_buffer_required_alignment); // cvp_buffer
 		host_visible_vram_arena_allocation_size_buffer[1] = sunder_compute_aligned_allocation_size(sizeof(lightray_vertex_t), total_vertex_count, uniform_buffer_required_alignment); // vertex_buffer
 		host_visible_vram_arena_allocation_size_buffer[2] = sunder_compute_aligned_allocation_size(sizeof(u32), total_index_count, uniform_buffer_required_alignment); // index_buffer
 		host_visible_vram_arena_allocation_size_buffer[3] = sunder_compute_aligned_allocation_size(sizeof(lightray_render_instance_t), total_instance_model_count, uniform_buffer_required_alignment); // render_instance_buffer
@@ -1158,7 +1158,7 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	// account for glyph render instance buffer 
 	u32 host_visible_vram_arena_suballocation_starting_indices_iter = LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_BUFFER_STARTING_INDEX;
 
-	for (u32 i = 0; i < core->total_camera_count; i++)
+	for (u32 i = 0; i < core->total_camera_attribute_count; i++)
 	{
 		const lightray_vulkan_vram_arena_suballocation_result_t host_visible_vram_arena_cvp_suballocation_result = lightray_vulkan_suballocate_from_vram_arena_debug(&core->host_visible_vram_arena, sizeof(lightray_cvp_t));
 		core->host_visible_vram_arena_suballocation_starting_offsets[host_visible_vram_arena_suballocation_starting_indices_iter] = host_visible_vram_arena_cvp_suballocation_result.starting_offset;
@@ -2264,6 +2264,8 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	SUNDER_LOG("\nnode buffer\n============================================================");
 	for (u32 i = 0; i < core->animation_core.total_node_count; i++)
 	{
+		SUNDER_LOG("\nindex: ");
+		SUNDER_LOG(i);
 		SUNDER_LOG("\nname: ");
 		sunder_log_string(&core->animation_core.node_names[i]);
 		SUNDER_LOG("\nparent_index: ");
@@ -3601,7 +3603,7 @@ void lightray_vulkan_create_swapchain_framebuffers(lightray_vulkan_core_t* core)
 	{
 		VkImageView attachments[2]{};
 		attachments[0] = core->swapchain_image_views[i];
-		attachments[1] = core->texture_buffer[core->depth_texture_index].view; // depth image, later add defines for these
+		attachments[1] = core->texture_buffer[core->depth_texture_index].view;
 
 		core->swapchain_framebuffer_info.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		core->swapchain_framebuffer_info.pAttachments = attachments;
@@ -3634,9 +3636,49 @@ void lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags
 
 	vkWaitForFences(core->logical_device, 1, &core->inflight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
-	vkAcquireNextImageKHR(core->logical_device, core->swapchain, UINT64_MAX, core->image_available_for_rendering_semaphores[current_frame], nullptr, &index_of_acquired_swapchain_image);
+	const VkResult swapchain_validity =  vkAcquireNextImageKHR(core->logical_device, core->swapchain, UINT64_MAX, core->image_available_for_rendering_semaphores[current_frame], nullptr, &index_of_acquired_swapchain_image);
+	
+	if (swapchain_validity == VK_ERROR_OUT_OF_DATE_KHR || swapchain_validity == VK_SUBOPTIMAL_KHR)
+	{
+		SUNDER_LOG("\nrecreated swapchain");
+		////////////////////
+		i32 width = 0;
+		i32 height = 0;
+		glfwGetFramebufferSize(core->window, &width, &height);
 
-	// recreate swapchain if needed later
+		while (width == 0 || height == 0)
+		{
+			glfwGetFramebufferSize(core->window, &width, &height);
+			glfwWaitEvents();
+		}
+
+		vkDeviceWaitIdle(core->logical_device);
+
+		lightray_vulkan_free_swapchain(core);
+		lightray_vulkan_free_swapchain_framebuffers(core);
+	
+		vkGetPhysicalDeviceSurfaceCapabilitiesKHR(core->gpus[0], core->surface, &core->surface_capabilities);
+
+		lightray_vulkan_create_swapchain(core);
+		lightray_vulkan_create_swapchain_framebuffers(core);
+
+		core->scissor.extent.width = width;
+		core->scissor.extent.height = height;
+		core->viewport.width = (f32)width;
+		core->viewport.height = (f32)height;
+		////////////////////
+
+		lightray_vulkan_set_camera_fov(core, 0, core->camera_attribute_buffer[0].fov);
+
+		current_frame = 0;
+
+		return;
+	}
+
+	else if (swapchain_validity != VK_SUCCESS)
+	{
+		return;
+	}
 
 	vkResetFences(core->logical_device, 1, &core->inflight_fences[current_frame]);
 	vkResetCommandBuffer(core->render_command_buffers[current_frame], 0);
@@ -3649,7 +3691,7 @@ void lightray_vulkan_execute_render_pass(lightray_vulkan_core_t* core, u32 flags
 	core->render_pass_begin_info.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	core->render_pass_begin_info.clearValueCount = 2;
 	core->render_pass_begin_info.pClearValues = core->clear_values;
-	core->render_pass_begin_info.framebuffer = core->swapchain_framebuffers[current_frame];
+	core->render_pass_begin_info.framebuffer = core->swapchain_framebuffers[index_of_acquired_swapchain_image];
 	core->render_pass_begin_info.renderArea.extent = core->swapchain_info.imageExtent;
 	core->render_pass_begin_info.renderArea.offset = { 0,0 };
 	core->render_pass_begin_info.renderPass = core->render_pass;
@@ -3851,10 +3893,18 @@ bool lightray_vulkan_is_format_supported(VkPhysicalDevice gpu, VkFormat format)
 	return properties.linearTilingFeatures != 0 || properties.optimalTilingFeatures != 0 || properties.bufferFeatures != 0;
 }
 
-void lightray_vulkan_set_camera_fov(lightray_vulkan_core_t* core, u32 camera_index, f32 desired_fov)
+void lightray_vulkan_set_camera_fov(lightray_vulkan_core_t* core, u32 camera_attribute_index, f32 desired_fov)
 {
-	core->camera_buffer[camera_index].fov = desired_fov;
-	core->cvp_buffer[camera_index].projection = lightray_construct_perspective_projection_matrix(core->camera_buffer[camera_index].fov, lightray_compute_aspect_ratio((f32)core->swapchain_info.imageExtent.width, (f32)core->swapchain_info.imageExtent.height), core->camera_buffer[camera_index].near_clip_plane_distance, core->camera_buffer[camera_index].far_clip_plane_distance, core->camera_buffer[camera_index].vulkan_y_flip);
+	core->camera_attribute_buffer[camera_attribute_index].fov = desired_fov;
+	core->cvp_buffer[camera_attribute_index].projection = lightray_construct_perspective_projection_matrix(core->camera_attribute_buffer[camera_attribute_index].fov, lightray_compute_aspect_ratio((f32)core->swapchain_info.imageExtent.width, (f32)core->swapchain_info.imageExtent.height), core->camera_attribute_buffer[camera_attribute_index].near_clip_plane_distance, core->camera_attribute_buffer[camera_attribute_index].far_clip_plane_distance, core->camera_attribute_buffer[camera_attribute_index].vulkan_y_flip);
+}
+
+void lightray_vulkan_set_camera_view(lightray_vulkan_core_t* core, lightray_scene_t* scene, const sunder_v3_t& direction, const sunder_v3_t& up, u32 camera_attribute_index)
+{
+	const u32 entity_camera_index = core->camera_attribute_buffer[camera_attribute_index].entity_index;
+	const sunder_v3_t entity_camera_position = scene->position_buffer[entity_camera_index];
+
+	core->cvp_buffer[camera_attribute_index].view = lightray_copy_sunder_m4_to_glm(sunder_m4_look_at(entity_camera_position, entity_camera_position + direction, up));
 }
 
 void lightray_vulkan_populate_mesh_binding_offset_buffer(const lightray_vulkan_core_t* core, lightray_scene_t* scene)
@@ -4096,6 +4146,7 @@ void lightray_vulkan_tick_core_begin(lightray_vulkan_core_t* core)
 
 void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_vulkan_core_tick_end_data_t* tick_data)
 {
+	
 	for (u32 i = 0; i < core->animation_core.playback_command_count; i++)
 	{
 		if (SUNDER_IS_ANY_BIT_SET(core->animation_core.playback_flags, i, 1ull))
@@ -4144,8 +4195,10 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 			}
 		}
 	}
+	
 
 	//////////////////////////////////
+	
 
 	i32 current_temp_buffer_offset = 0;
 
@@ -4286,6 +4339,7 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 	render_instance_glyph_buffer_copy_data.bytes_to_write = sunder_compute_array_size_in_bytes(sizeof(lightray_render_instance_glyph_t), 256);
 	const u64 render_instance_glyph_buffer_bytes_written = sunder_copy_buffer(core->cpu_side_host_visible_vram_arena_view, core->overlay_core.render_instance_glyph_buffer, &render_instance_glyph_buffer_copy_data);
 
+
 	/*
 	cstring_literal* string = "-69";
 	char buffer[10]{};
@@ -4360,106 +4414,281 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 
 	//////////////////////////////////
 
-	for (u32 i = 0; i < tick_data->scene->mesh_binding_count; i++)
+	const u32 chained_entity_count = tick_data->scene->current_chained_entity_count;
+	u32 current_binding_chain_length = 0;
+
+	for (u32 e = 0; e < chained_entity_count; e++)
 	{
-		if (SUNDER_IS_ANY_BIT_SET(tick_data->scene->visibility_flags, i, 1ull))
+		u32 current_entity_binding_chain_index = tick_data->scene->chained_entity_index_buffer[e];
+		u32 last_valid_entity_index_in_current_binding_chain = 0;
+
+		if (SUNDER_IS_BUFFERED_BIT_SET(tick_data->scene->already_part_of_other_binding_chain_bitmask_buffer, current_entity_binding_chain_index))
 		{
-			const u32 transform_index = tick_data->scene->mesh_binding_buffer[i].transform_index;
-			const u32 bone_node_mapping_index = tick_data->scene->mesh_binding_buffer[i].bone_node_mapping_index;
-			const b32 bound_to_camera = tick_data->scene->mesh_binding_buffer[i].bound_to_camera;
+			continue;
+		}
 
-			glm::mat4 model{};
-			sunder_m4_t mm{};
+		while (current_entity_binding_chain_index != UINT32_MAX)
+		{
+			last_valid_entity_index_in_current_binding_chain = current_entity_binding_chain_index;
+			current_entity_binding_chain_index = tick_data->scene->entity_buffer[current_entity_binding_chain_index].parent_index;
+		}
 
-			if (bound_to_camera)
+		current_entity_binding_chain_index = last_valid_entity_index_in_current_binding_chain;
+
+		const u32 current_entity_binding_chain_index_buffer_offset = tick_data->scene->entity_binding_chain_buffer[tick_data->scene->current_entity_binding_chain_count].entity_binding_chain_index_buffer_offset;
+		u32 current_binding_chain_depth_index = 0;
+
+		while (SUNDER_TRUE)
+		{
+			const u32 children_count = tick_data->scene->entity_buffer[current_entity_binding_chain_index].children_index_count;
+			const u32 current_entity_children_index_buffer_offset = lightray_get_entity_children_index_buffer_offset(tick_data->scene, current_entity_binding_chain_index);
+
+			if (!(SUNDER_IS_BUFFERED_BIT_SET(tick_data->scene->has_already_written_into_binding_chain_bitmask_buffer, current_entity_binding_chain_index)))
 			{
-				glm::mat4 cam_world = glm::inverse(core->cvp_buffer[0].view);
-				const sunder_m4_t cam_world_sunder = lightray_copy_glm_mat4_to_sunder(cam_world);
+				//SUNDER_LOG("\nbinding_chain_entity_index: ");
+				//SUNDER_LOG(current_entity_binding_chain_index);
 
-				const sunder_v3_t local_pos = tick_data->scene->position_buffer[transform_index];
-				const sunder_quat_t local_rot = tick_data->scene->quat_rotation_buffer[transform_index];
+				tick_data->scene->entity_buffer[current_entity_binding_chain_index].binding_chain_index_buffer_index = current_binding_chain_length;
+				current_binding_chain_length++;
+				const u32 current_entity_binding_chain_index_count = tick_data->scene->entity_binding_chain_buffer[tick_data->scene->current_entity_binding_chain_count].entity_binding_chain_index_count;
+				tick_data->scene->entity_binding_chain_index_buffer[current_entity_binding_chain_index_buffer_offset + current_entity_binding_chain_index_count] = current_entity_binding_chain_index;
+				tick_data->scene->entity_binding_chain_buffer[tick_data->scene->current_entity_binding_chain_count].entity_binding_chain_index_count++;
 
-				// camera local forward
-				sunder_v3_t converted_local_pos{};
-				converted_local_pos.z = -local_pos.x;
-
-				// camera local right
-				converted_local_pos.x = -local_pos.y; 
-
-				//  camera local up
-				converted_local_pos.y = local_pos.z;
-
-				const sunder_m4_t local_tm = sunder_m4_translation(converted_local_pos);
-				const sunder_m4_t local_rm = sunder_m4_rotation(local_rot);
-
-				mm = cam_world_sunder * local_tm * local_rm;
+				SUNDER_SET_BUFFERED_BIT(tick_data->scene->already_part_of_other_binding_chain_bitmask_buffer, current_entity_binding_chain_index);
+				SUNDER_SET_BUFFERED_BIT(tick_data->scene->has_already_written_into_binding_chain_bitmask_buffer, current_entity_binding_chain_index);
 			}
 
-			else if (bone_node_mapping_index != UINT32_MAX)
+			const u32 current_depth = tick_data->scene->binding_chain_depth_buffer[current_binding_chain_depth_index];
+
+			if (current_entity_binding_chain_index == last_valid_entity_index_in_current_binding_chain && current_depth == children_count)
 			{
-				////////////////////////////////////////////////////////////////////////////////////////////
-				/*
-				const sunder_m4_t  bone_transform = lightray_copy_glm_mat4_to_sunder(core->animation_core.computed_bone_matrix_buffer[4]);
-				const sunder_v3_t local_pos = tick_data->scene->position_buffer[transform_index];
-				const sunder_quat_t local_rot = tick_data->scene->quat_rotation_buffer[transform_index];
+				break;
+			}
 
-				const sunder_m4_t shotgun_mm = lightray_copy_glm_mat4_to_sunder(core->cpu_side_render_instance_buffer[tick_data->scene->mesh_binding_buffer[23].instance_model_index].model.model);
+			else if (current_depth == children_count && children_count != 0)
+			{
+				const u32 parent_index = tick_data->scene->entity_buffer[current_entity_binding_chain_index].parent_index;
+				current_binding_chain_depth_index--;
+				current_entity_binding_chain_index = parent_index;
+			}
 
-				//const sunder_m4_t bone_world = shotgun_mm * bone_transform;
-
-				//const sunder_m4_t tm = sunder_m4_translation(local_pos);
-				//const sunder_m4_t rm = sunder_m4_rotation(local_rot);
-
-				//mm = bone_world * tm * rm;
-
-				const sunder_m4_t bone_world = bone_transform;
-
-				const sunder_m4_t tm = sunder_m4_translation(local_pos);
-				const sunder_m4_t rm = sunder_m4_rotation(local_rot);
-
-				const sunder_m4_t bone_attachment = bone_world * tm * rm;
-				mm = shotgun_mm * bone_attachment;
-				*/
-				////////////////////////////////////////////////////////////////////////////////////////////
-
-				const sunder_m4_t  bone_transform = lightray_copy_glm_mat4_to_sunder(core->animation_core.computed_bone_matrix_buffer[4]);
-
-				glm::mat4 cam_world = glm::inverse(core->cvp_buffer[0].view);
-				const sunder_m4_t cam_world_sunder = lightray_copy_glm_mat4_to_sunder(cam_world);
-
-				const sunder_v3_t local_pos = tick_data->scene->position_buffer[transform_index];
-				const sunder_quat_t local_rot = tick_data->scene->quat_rotation_buffer[transform_index];
-	
-				const sunder_m4_t local_tm = sunder_m4_translation(local_pos);
-				const sunder_m4_t local_rm = sunder_m4_rotation(local_rot);
-
-				const sunder_v3_t shotgun_local_pos = tick_data->scene->position_buffer[23];
-				const sunder_quat_t shotgun_local_rot = tick_data->scene->quat_rotation_buffer[23];
-
-				sunder_v3_t converted_shotgun_local_pos{};
-				converted_shotgun_local_pos.z = -shotgun_local_pos.x;
-
-				// camera local right
-				converted_shotgun_local_pos.x = -shotgun_local_pos.y;
-
-				//  camera local up
-				converted_shotgun_local_pos.y = shotgun_local_pos.z;
-
-				const sunder_m4_t shotgun_local_tm = sunder_m4_translation(converted_shotgun_local_pos);
-				const sunder_m4_t shotgun_local_rm = sunder_m4_rotation(shotgun_local_rot);
-
-				const sunder_m4_t shotgun_world = cam_world_sunder * shotgun_local_tm * shotgun_local_rm;
-				const sunder_m4_t attached_offset = shotgun_world * local_tm;
-
-				mm = attached_offset * bone_transform;
-
-				mm = mm * local_rm;
+			else if (children_count != 0)
+			{
+				current_entity_binding_chain_index = tick_data->scene->entity_children_index_buffer[current_entity_children_index_buffer_offset + tick_data->scene->binding_chain_depth_buffer[current_binding_chain_depth_index]];
+				tick_data->scene->binding_chain_depth_buffer[current_binding_chain_depth_index]++;
+				current_binding_chain_depth_index++;
 			}
 
 			else
 			{
+				const u32 parent_index = tick_data->scene->entity_buffer[current_entity_binding_chain_index].parent_index;
+				current_binding_chain_depth_index--;
+				current_entity_binding_chain_index = parent_index;
+			}
+		}
+
+		/*
+		SUNDER_LOG("\n\n");
+
+		for (u32 smth = 0; smth < tick_data->scene->entity_binding_chain_buffer[tick_data->scene->current_entity_binding_chain_count].entity_binding_chain_index_count; smth++)
+		{
+			SUNDER_LOG(tick_data->scene->entity_binding_chain_index_buffer[current_entity_binding_chain_index_buffer_offset + smth]);
+			SUNDER_LOG(" ");
+		}
+		*/
+
+		for (u32 d = 0; d < current_binding_chain_length; d++)
+		{
+			tick_data->scene->binding_chain_depth_buffer[d] = 0;
+		}
+
+		current_binding_chain_length = 0;
+
+		if (sunder_valid_offset(tick_data->scene->current_entity_binding_chain_count + 1, tick_data->scene->total_entity_binding_chain_count))
+		{
+			const u32 next_binding_chain_index_buffer_offset = tick_data->scene->entity_binding_chain_buffer[tick_data->scene->current_entity_binding_chain_count].entity_binding_chain_index_buffer_offset + tick_data->scene->entity_binding_chain_buffer[tick_data->scene->current_entity_binding_chain_count].entity_binding_chain_index_count;
+			tick_data->scene->entity_binding_chain_buffer[tick_data->scene->current_entity_binding_chain_count + 1].entity_binding_chain_index_buffer_offset = next_binding_chain_index_buffer_offset;
+			tick_data->scene->current_entity_binding_chain_count++;
+		}
+	}
+
+	const u32 binding_chain_count = tick_data->scene->current_entity_binding_chain_count;
+	
+	for (u32 bc = 0; bc < binding_chain_count; bc++)
+	{
+		const u32 current_entity_binding_chain_index_count = tick_data->scene->entity_binding_chain_buffer[bc].entity_binding_chain_index_count;
+		const u32 current_entity_binding_chain_index_buffer_offset = tick_data->scene->entity_binding_chain_buffer[bc].entity_binding_chain_index_buffer_offset;
+		const u32 binding_chain_root_entity_index = tick_data->scene->entity_binding_chain_index_buffer[current_entity_binding_chain_index_buffer_offset];
+		const u32 binding_chain_root_entity_camera_attribute_index = tick_data->scene->entity_buffer[binding_chain_root_entity_index].camera_attribute_index;
+		const u32 binding_chain_root_entity_instance_model_binding_index = tick_data->scene->entity_buffer[binding_chain_root_entity_index].instance_model_binding_index;
+
+		sunder_m4_t root_binding_chain_entity_transform = sunder_m4_identity();
+
+		if (binding_chain_root_entity_camera_attribute_index != UINT16_MAX)
+		{
+			const glm::mat4 binding_chain_root_entity_camera_transform = core->cvp_buffer[binding_chain_root_entity_camera_attribute_index].view;
+			root_binding_chain_entity_transform = lightray_copy_glm_mat4_to_sunder(binding_chain_root_entity_camera_transform);
+			root_binding_chain_entity_transform = sunder_m4_inverse(root_binding_chain_entity_transform);
+		}
+		
+		else if(binding_chain_root_entity_instance_model_binding_index != UINT32_MAX)
+		{
+			const sunder_v3_t binding_chain_root_entity_pos = tick_data->scene->position_buffer[binding_chain_root_entity_index];
+			const sunder_quat_t binding_chain_root_entity_rot = tick_data->scene->quat_rotation_buffer[binding_chain_root_entity_index];
+			const sunder_v3_t binding_chain_root_entity_scale = tick_data->scene->scale_buffer[binding_chain_root_entity_index];
+
+			root_binding_chain_entity_transform = sunder_m4_translation(binding_chain_root_entity_pos) * sunder_m4_rotation(binding_chain_root_entity_rot) * sunder_m4_scale(binding_chain_root_entity_scale);
+
+			core->cpu_side_render_instance_buffer[binding_chain_root_entity_instance_model_binding_index].model.model = lightray_copy_sunder_m4_to_glm(root_binding_chain_entity_transform);
+		}
+
+		else
+		{
+			const sunder_v3_t binding_chain_root_entity_pos = tick_data->scene->position_buffer[binding_chain_root_entity_index];
+			const sunder_quat_t binding_chain_root_entity_rot = tick_data->scene->quat_rotation_buffer[binding_chain_root_entity_index];
+			const sunder_v3_t binding_chain_root_entity_scale = tick_data->scene->scale_buffer[binding_chain_root_entity_index];
+
+			root_binding_chain_entity_transform = sunder_m4_translation(binding_chain_root_entity_pos) * sunder_m4_rotation(binding_chain_root_entity_rot) * sunder_m4_scale(binding_chain_root_entity_scale);
+
+			tick_data->scene->chained_entity_transform_matrix_buffer[binding_chain_root_entity_index] = root_binding_chain_entity_transform;
+		}
+
+		SUNDER_SET_BUFFERED_BIT(tick_data->scene->has_already_assembled_transform_matrix_bitmask_buffer, binding_chain_root_entity_index);
+
+		for (u32 bci = 1; bci < current_entity_binding_chain_index_count; bci++)
+		{
+			const u32 current_binding_chain_entity_index = tick_data->scene->entity_binding_chain_index_buffer[current_entity_binding_chain_index_buffer_offset + bci];
+			const u32 current_binding_chain_entity_camera_attribute = tick_data->scene->entity_buffer[current_binding_chain_entity_index].camera_attribute_index;
+			const u32 current_binding_chain_entity_instance_model_index = tick_data->scene->entity_buffer[current_binding_chain_entity_index].instance_model_binding_index;
+			const u32 current_binding_chain_entity_bone_binding_index = tick_data->scene->entity_buffer[current_binding_chain_entity_index].bone_binding_index;
+			const u32 current_binding_chain_entity_parent_index = tick_data->scene->entity_buffer[current_binding_chain_entity_index].parent_index;
+			const u32 current_binding_chain_entity_parent_index_normalized = tick_data->scene->entity_buffer[current_binding_chain_entity_parent_index].binding_chain_index_buffer_index;
+			const u32 parent_entity_camera_attribute_index = tick_data->scene->entity_buffer[current_binding_chain_entity_parent_index].camera_attribute_index;
+			const u32 current_entity_instance_model_binding_index = tick_data->scene->entity_buffer[current_binding_chain_entity_parent_index].instance_model_binding_index;
+			const u16 current_binding_chain_entity_flags = tick_data->scene->entity_buffer[current_binding_chain_entity_index].flags;
+			sunder_m4_t parent_transform = sunder_m4_identity();
+
+			/*
+			SUNDER_LOG("\n\nnormalized_index: ");
+			SUNDER_LOG(bci);
+			SUNDER_LOG("\nentity_index: ");
+			SUNDER_LOG(current_binding_chain_entity_index);
+			SUNDER_LOG("\nparent_entity_index: ");
+			SUNDER_LOG(current_binding_chain_entity_parent_index);
+			SUNDER_LOG("\nparent_normalized_index: ");
+			SUNDER_LOG(current_binding_chain_entity_parent_index_normalized);
+			*/
+
+			if (parent_entity_camera_attribute_index != UINT16_MAX)
+			{
+				parent_transform = lightray_copy_glm_mat4_to_sunder(core->cvp_buffer[parent_entity_camera_attribute_index].view);
+				parent_transform = sunder_m4_inverse(parent_transform);
+			}
+
+			else if (current_entity_instance_model_binding_index != UINT32_MAX)
+			{
+				parent_transform = lightray_copy_glm_mat4_to_sunder(core->cpu_side_render_instance_buffer[current_entity_instance_model_binding_index].model.model);
+			}
+
+			else
+			{
+				parent_transform = tick_data->scene->chained_entity_transform_matrix_buffer[current_binding_chain_entity_parent_index];
+			}
+
+			if (!(SUNDER_IS_ANY_BIT_SET(current_binding_chain_entity_flags, LIGHTRAY_ENTITY_BITS_INHERIT_ENTITY_BINDING_CHAIN_TRANSLATION_BIT, 1)))
+			{
+				const sunder_quat_t extracted_rotation = sunder_extract_rotation_m4(parent_transform);
+				const sunder_v3_t extracted_scale = sunder_extract_scale_m4(parent_transform);
+
+				parent_transform = sunder_m4_identity();
+				parent_transform = sunder_m4_rotation(extracted_rotation) * sunder_m4_scale(extracted_scale);
+			}
+
+			if (!(SUNDER_IS_ANY_BIT_SET(current_binding_chain_entity_flags, LIGHTRAY_ENTITY_BITS_INHERIT_ENTITY_BINDING_CHAIN_ROTATION_BIT, 1)))
+			{
+				const sunder_v3_t extracted_translation = sunder_extract_translation_m4(parent_transform);
+				const sunder_v3_t extracted_scale = sunder_extract_scale_m4(parent_transform);
+
+				parent_transform = sunder_m4_identity();
+				parent_transform = sunder_m4_translation(extracted_translation) * sunder_m4_scale(extracted_scale);
+			}
+
+			if (!(SUNDER_IS_ANY_BIT_SET(current_binding_chain_entity_flags, LIGHTRAY_ENTITY_BITS_INHERIT_ENTITY_BINDING_CHAIN_SCALE_BIT, 1)))
+			{
+				const sunder_v3_t extracted_translation = sunder_extract_translation_m4(parent_transform);
+				const sunder_m4_t uniform_scale_parent_transform = sunder_remove_scale_m4(parent_transform);
+				const sunder_quat_t extracted_rotation = sunder_extract_rotation_m4(uniform_scale_parent_transform);
+
+				parent_transform = sunder_m4_identity();
+				parent_transform = sunder_m4_translation(extracted_translation) * sunder_m4_rotation(sunder_quat_conjugate(extracted_rotation));
+			}
+
+			if (current_binding_chain_entity_camera_attribute != UINT16_MAX)
+			{
+				sunder_m4_t current_binding_chain_entity_camera_transform = lightray_copy_glm_mat4_to_sunder(core->cvp_buffer[current_binding_chain_entity_camera_attribute].view);
+				current_binding_chain_entity_camera_transform = sunder_m4_inverse(current_binding_chain_entity_camera_transform);
+				parent_transform = parent_transform * current_binding_chain_entity_camera_transform;
+
+				core->cvp_buffer[current_binding_chain_entity_camera_attribute].view = lightray_copy_sunder_m4_to_glm(sunder_m4_inverse(parent_transform));
+			}
+
+			else if (current_binding_chain_entity_bone_binding_index != UINT32_MAX)
+			{
+				const sunder_m4_t bone_model_space_transform = lightray_copy_glm_mat4_to_sunder(core->animation_core.computed_bone_matrix_buffer[current_binding_chain_entity_bone_binding_index]);
+
+				const sunder_v3_t current_binding_chain_entity_local_pos = tick_data->scene->position_buffer[current_binding_chain_entity_index];
+				const sunder_quat_t current_binding_chain_local_rot = tick_data->scene->quat_rotation_buffer[current_binding_chain_entity_index];
+				const sunder_v3_t current_binding_chain_local_scale = tick_data->scene->scale_buffer[current_binding_chain_entity_index];
+
+				parent_transform = parent_transform * bone_model_space_transform * sunder_m4_translation(current_binding_chain_entity_local_pos) * sunder_m4_rotation(current_binding_chain_local_rot) * sunder_m4_scale(current_binding_chain_local_scale);
+
+				if (current_binding_chain_entity_instance_model_index != UINT32_MAX)
+				{
+					core->cpu_side_render_instance_buffer[current_binding_chain_entity_instance_model_index].model.model = lightray_copy_sunder_m4_to_glm(parent_transform);
+				}
+			}
+
+			else if (current_binding_chain_entity_instance_model_index != UINT32_MAX)
+			{
+				const sunder_v3_t current_binding_chain_entity_local_pos = tick_data->scene->position_buffer[current_binding_chain_entity_index];
+				const sunder_quat_t current_binding_chain_local_rot = tick_data->scene->quat_rotation_buffer[current_binding_chain_entity_index];
+				const sunder_v3_t current_binding_chain_local_scale = tick_data->scene->scale_buffer[current_binding_chain_entity_index];
+
+				const sunder_m4_t current_binding_chain_transform = sunder_m4_translation(current_binding_chain_entity_local_pos) * sunder_m4_rotation(current_binding_chain_local_rot) * sunder_m4_scale(current_binding_chain_local_scale);
+
+				parent_transform = parent_transform * current_binding_chain_transform;
+
+				core->cpu_side_render_instance_buffer[current_binding_chain_entity_instance_model_index].model.model = lightray_copy_sunder_m4_to_glm(parent_transform);
+			}
+
+			else
+			{
+				const sunder_v3_t current_binding_chain_entity_local_pos = tick_data->scene->position_buffer[current_binding_chain_entity_index];
+				const sunder_quat_t current_binding_chain_local_rot = tick_data->scene->quat_rotation_buffer[current_binding_chain_entity_index];
+				const sunder_v3_t current_binding_chain_local_scale = tick_data->scene->scale_buffer[current_binding_chain_entity_index];
+
+				const sunder_m4_t current_binding_chain_transform = sunder_m4_translation(current_binding_chain_entity_local_pos) * sunder_m4_rotation(current_binding_chain_local_rot) * sunder_m4_scale(current_binding_chain_local_scale);
+
+				parent_transform = parent_transform * current_binding_chain_transform;
+
+				tick_data->scene->chained_entity_transform_matrix_buffer[current_binding_chain_entity_index] = parent_transform;
+			}
+
+			SUNDER_SET_BUFFERED_BIT(tick_data->scene->has_already_assembled_transform_matrix_bitmask_buffer, current_binding_chain_entity_index);
+		}
+	}
+	
+	for (u32 mb = 0; mb < tick_data->scene->mesh_binding_count; mb++)
+	{
+		const u32 transform_index = tick_data->scene->mesh_binding_buffer[mb].transform_index;
+
+		if (!(SUNDER_IS_BUFFERED_BIT_SET(tick_data->scene->has_already_assembled_transform_matrix_bitmask_buffer, transform_index)))
+		{
+			if (SUNDER_IS_ANY_BIT_SET(tick_data->scene->visibility_flags, transform_index, 1ull))
+			{
+				sunder_m4_t mm = sunder_m4_identity();
+
 				const sunder_v3_t v3_pos = tick_data->scene->position_buffer[transform_index];
-				const sunder_v3_t v3_rot = tick_data->scene->rotation_buffer[transform_index];
 				const sunder_v3_t v3_scale = tick_data->scene->scale_buffer[transform_index];
 				const sunder_quat_t quat_rot = tick_data->scene->quat_rotation_buffer[transform_index];
 
@@ -4467,20 +4696,15 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 				const sunder_m4_t rm = sunder_m4_rotation(quat_rot);
 				const sunder_m4_t sm = sunder_m4_scale(v3_scale);
 
-				const sunder_quat_t q = sunder_quat_degrees(sunder_v3(0.0f, 0.0f, 1.0f), 90.0f);
-				const sunder_m4_t rrm = sunder_m4_rotation(q);
-				
 				mm = tm * rm * sm;
+
+				const u32 instance_model_index = tick_data->scene->mesh_binding_buffer[mb].instance_model_index;
+				core->cpu_side_render_instance_buffer[instance_model_index].model.model = lightray_copy_sunder_m4_to_glm(mm);
 			}
-
-			model = lightray_copy_sunder_m4_to_glm(mm);
-
-			const u32 instance_model_index = tick_data->scene->mesh_binding_buffer[i].instance_model_index;
-			core->cpu_side_render_instance_buffer[instance_model_index].model.model = model;
 		}
 	}
 
-	const u64 cpu_side_cvp_buffer_size_in_bytes = sunder_compute_array_size_in_bytes(sizeof(lightray_cvp_t), core->total_camera_count);
+	const u64 cpu_side_cvp_buffer_size_in_bytes = sunder_compute_array_size_in_bytes(sizeof(lightray_cvp_t), core->total_camera_attribute_count);
 	const u64 host_visible_cvp_buffer_offset = core->host_visible_vram_arena_suballocation_starting_offsets[LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_BUFFER_STARTING_INDEX];
 	u8* u8_gpu_side_cvp_buffer_ptr = SUNDER_CAST(u8*, core->cpu_side_host_visible_vram_arena_view);
 	void* void_cpu_side_cvp_buffer_ptr = core->cvp_buffer;
@@ -4505,15 +4729,6 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 		}
 	}
 
-	//for (u32 i = 0; i < core->animation_core.total_computed_bone_transform_matrix_buffer_bone_count; i++)
-	//{
-	//	SUNDER_LOG("\n");
-	//	SUNDER_LOG(i);
-	//	SUNDER_LOG(" | ");
-	//	const sunder_m4_t bm = lightray_copy_glm_mat4_to_sunder(core->animation_core.computed_bone_matrix_buffer[i]);
-	//	sunder_log_m4(bm);
-	//}
-
 	const u64 instance_model_buffer_bytes_written = sunder_copy_buffer(core->cpu_side_host_visible_vram_arena_view, core->cpu_side_render_instance_buffer, &tick_data->instance_model_buffer_copy_data);
 	const u64 computed_bone_matrix_buffer_bytes_written = sunder_copy_buffer(core->cpu_side_host_visible_storage_vram_arena_view, core->animation_core.computed_bone_matrix_buffer, &tick_data->computed_bone_matrix_buffer_copy_data);
 }
@@ -4529,49 +4744,50 @@ void lightray_vulkan_log_mesh_render_pass_data_mapping_buffer(const lightray_vul
 	}
 }
 
-void lightray_vulkan_initialize_camera(lightray_vulkan_core_t* core, const lightray_camera_initialization_data_t* initialization_data)
+u16 lightray_vulkan_push_camera(lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_camera_attribute_t* camera_attribute, u32 entity_index)
 {
-	core->camera_buffer[initialization_data->camera_index].rotation = initialization_data->rotation;
-	core->camera_buffer[initialization_data->camera_index].position = initialization_data->position;
-	core->camera_buffer[initialization_data->camera_index].sensitivity = initialization_data->sensitivity;
-	core->camera_buffer[initialization_data->camera_index].first_tick = true;
-	core->camera_buffer[initialization_data->camera_index].projection_kind = initialization_data->projection_kind;
-	core->camera_buffer[initialization_data->camera_index].vulkan_y_flip = initialization_data->vulkan_y_flip;
-	core->camera_buffer[initialization_data->camera_index].near_clip_plane_distance = initialization_data->near_clip_plane_distance;
-	core->camera_buffer[initialization_data->camera_index].far_clip_plane_distance = initialization_data->far_clip_plane_distance;
+	const u16 current_camera_attribute_index = core->current_camera_attribute_count;
+	core->current_camera_attribute_count++;
 
-	if (initialization_data->projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_PERSPECTIVE)
+	core->camera_attribute_buffer[current_camera_attribute_index].sensitivity = camera_attribute->sensitivity;
+	core->camera_attribute_buffer[current_camera_attribute_index].first_tick = true;
+	core->camera_attribute_buffer[current_camera_attribute_index].projection_kind = camera_attribute->projection_kind;
+	core->camera_attribute_buffer[current_camera_attribute_index].vulkan_y_flip = camera_attribute->vulkan_y_flip;
+	core->camera_attribute_buffer[current_camera_attribute_index].near_clip_plane_distance = camera_attribute->near_clip_plane_distance;
+	core->camera_attribute_buffer[current_camera_attribute_index].far_clip_plane_distance = camera_attribute->far_clip_plane_distance;
+	core->camera_attribute_buffer[current_camera_attribute_index].entity_index = entity_index;
+
+	scene->entity_buffer[entity_index].camera_attribute_index = current_camera_attribute_index;
+
+	if (camera_attribute->projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_PERSPECTIVE)
 	{
-		core->cvp_buffer[initialization_data->camera_index].view = glm::lookAt(initialization_data->position, glm::vec3(0.0f), glm::vec3(LIGHTRAY_WORLD_UP_VECTOR));
+		core->cvp_buffer[current_camera_attribute_index].view = glm::lookAt(glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f), glm::vec3(LIGHTRAY_WORLD_UP_VECTOR));
 
-		lightray_vulkan_set_camera_fov(core, initialization_data->camera_index, initialization_data->fov);
+		lightray_vulkan_set_camera_fov(core, current_camera_attribute_index, camera_attribute->fov);
 	}
 
-	else if(initialization_data->projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_ORTHOGRAPHIC)
+	else if(camera_attribute->projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_ORTHOGRAPHIC)
 	{
-		core->camera_buffer[initialization_data->camera_index].left = initialization_data->left;
-		core->camera_buffer[initialization_data->camera_index].right = initialization_data->right;
-		core->camera_buffer[initialization_data->camera_index].bottom = initialization_data->bottom;
-		core->camera_buffer[initialization_data->camera_index].top = initialization_data->top;
-
-		core->cvp_buffer[initialization_data->camera_index].projection = lightray_construct_orthographic_projection_matrix(initialization_data->left, initialization_data->right, initialization_data->bottom, initialization_data->top, initialization_data->near_clip_plane_distance, initialization_data->far_clip_plane_distance, initialization_data->vulkan_y_flip);
-		core->cvp_buffer[initialization_data->camera_index].view = glm::mat4(1.0f); // later adjust this
+		core->cvp_buffer[current_camera_attribute_index].projection = lightray_construct_orthographic_projection_matrix(0.0f, 1.0f, 1.0f, 0.0f, camera_attribute->near_clip_plane_distance, camera_attribute->far_clip_plane_distance, camera_attribute->vulkan_y_flip);
+		core->cvp_buffer[current_camera_attribute_index].view = glm::mat4(1.0f); // later adjust this
 	}
+
+	return current_camera_attribute_index;
 }
 
-lightray_camera_t* lightray_vulkan_get_camera(const lightray_vulkan_core_t* core, u32 camera_index)
+lightray_camera_attribute_t* lightray_vulkan_get_camera_attribute(const lightray_vulkan_core_t* core, u32 camera_attribute_index)
 {
-	return &core->camera_buffer[camera_index];
+	return &core->camera_attribute_buffer[camera_attribute_index];
 }
 
-lightray_vulkan_result lightray_vulkan_bind_perspective_camera(lightray_vulkan_core_t* core, u32 camera_index)
+lightray_vulkan_result lightray_vulkan_bind_perspective_camera(lightray_vulkan_core_t* core, u32 camera_attribute_index)
 {
-	if (sunder_valid_index(camera_index, core->total_camera_count))
+	if (sunder_valid_index(camera_attribute_index, core->total_camera_attribute_count))
 	{
-		if (core->camera_buffer[camera_index].projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_PERSPECTIVE)
+		if (core->camera_attribute_buffer[camera_attribute_index].projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_PERSPECTIVE)
 		{
-			core->perspective_camera_dynamic_offset = SUNDER_CAST2(u32)core->host_visible_vram_arena_suballocation_starting_offsets[LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_BUFFER_STARTING_INDEX + camera_index];
-			core->bound_perspective_camera_index = camera_index;
+			core->perspective_camera_dynamic_offset = SUNDER_CAST2(u32)core->host_visible_vram_arena_suballocation_starting_offsets[LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_BUFFER_STARTING_INDEX + camera_attribute_index];
+			core->bound_perspective_camera_index = camera_attribute_index;
 			SUNDER_SET_BIT(core->flags, LIGHTRAY_VULKAN_BITS_PERSPECTIVE_CAMERA_BOUND_BIT, 1ull);
 
 			return LIGHTRAY_VULKAN_RESULT_SUCCESS;
@@ -4583,13 +4799,13 @@ lightray_vulkan_result lightray_vulkan_bind_perspective_camera(lightray_vulkan_c
 	return LIGHTRAY_VULKAN_RESULT_FAILURE;
 }
 
-lightray_vulkan_result lightray_vulkan_bind_overlay_camera(lightray_vulkan_core_t* core, u32 camera_index)
+lightray_vulkan_result lightray_vulkan_bind_overlay_camera(lightray_vulkan_core_t* core, u32 camera_attribute_index)
 {
-	if (sunder_valid_index(camera_index, core->total_camera_count))
+	if (sunder_valid_index(camera_attribute_index, core->total_camera_attribute_count))
 	{
-		if (core->camera_buffer[camera_index].projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_ORTHOGRAPHIC)
+		if (core->camera_attribute_buffer[camera_attribute_index].projection_kind == LIGHTRAY_CAMERA_PROJECTION_KIND_ORTHOGRAPHIC)
 		{
-			core->overlay_camera_dynamic_offset = SUNDER_CAST2(u32)core->host_visible_vram_arena_suballocation_starting_offsets[LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_BUFFER_STARTING_INDEX + camera_index];
+			core->overlay_camera_dynamic_offset = SUNDER_CAST2(u32)core->host_visible_vram_arena_suballocation_starting_offsets[LIGHTRAY_VULKAN_HOST_VISIBLE_VRAM_ARENA_CVP_BUFFER_STARTING_INDEX + camera_attribute_index];
 			SUNDER_SET_BIT(core->flags, LIGHTRAY_VULKAN_BITS_OVERLAY_CAMERA_BOUND_BIT, 1ull);
 
 			return LIGHTRAY_VULKAN_RESULT_SUCCESS;
@@ -4718,9 +4934,9 @@ f32 lightray_vulkan_normalize_height_f32(const lightray_vulkan_core_t* core, f32
 	return pixels / core->swapchain_info.imageExtent.height;
 }
 
-u32 lightray_vulkan_get_reordered_global_mesh_index(const lightray_vulkan_core_t* core, u32 og_mesh_index)
+u32 lightray_vulkan_get_reordered_global_mesh_index(const lightray_vulkan_core_t* core, u32 global_mesh_index)
 {
-	return core->mesh_render_pass_data_mapping_buffer[og_mesh_index];
+	return core->mesh_render_pass_data_mapping_buffer[global_mesh_index];
 }
 
 bool get_cell_from_position(const glm::vec3& pos, i32& out_row, i32& out_col, const glm::vec3& grid_origin)
@@ -4746,4 +4962,1166 @@ void lightray_vulkan_tick_core_defered(lightray_vulkan_core_t* core)
 {
 	// process collision grid stuff
 	// update model matrices
+}
+
+b32 lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_raycast_data_t* data, u32* out_raycast_pierce_layer_test_data_count, u16* external_inverse_written_count, sunder_m4_t* external_inverse_buffer)
+{
+	return lightray_cast_ray(scene, data, out_raycast_pierce_layer_test_data_count, external_inverse_written_count, external_inverse_buffer, core->cpu_side_render_instance_buffer);
+}
+
+b32 lightray_vulkan_collision_attribute_collides_immediate(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale)
+{
+	/////////////////////////////// step 1 ///////////////////////////////
+	const u32 aabb_index = scene->collision_attribute_buffer[collision_attribute_index].aabb_index;
+
+	const sunder_m4_t new_collision_attribute_model = sunder_m4_model(position, rotation, scale);
+	const sunder_m4_t aabb_new_model = new_collision_attribute_model * sunder_m4_model(scene->position_buffer[aabb_index], scene->quat_rotation_buffer[aabb_index], scene->scale_buffer[aabb_index]);
+
+	const sunder_v3_t aabb_world_position = sunder_extract_translation_m4(aabb_new_model);
+	const sunder_v3_t aabb_world_scale = sunder_extract_scale_m4(aabb_new_model);
+
+	const u32 capsule_index_count = core->mesh_render_pass_data_buffer[3].index_count;
+	const u32 capsule_index_buffer_offset = core->mesh_render_pass_data_buffer[3].index_buffer_offset;
+
+	const u32 collision_mesh_batch_index = scene->collision_attribute_buffer[collision_attribute_index].collision_mesh_batch_index;
+
+	const u32 collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_buffer_offset;
+
+	const u32 capsule_entity_index = scene->collision_mesh_buffer[collision_mesh_buffer_offset].entity_index;
+	const sunder_m4_t capsule_new_model = new_collision_attribute_model * sunder_m4_model(scene->position_buffer[capsule_entity_index], scene->quat_rotation_buffer[capsule_entity_index], scene->scale_buffer[capsule_entity_index]);
+		
+	const sunder_v3_t* local_space_vertex_positions = scene->sentinel_local_space_vertex_position_buffer;
+	sunder_v3_t* world_space_vertex_positions = scene->collision_mesh_buffer[collision_mesh_buffer_offset].sentinel_world_space_vertex_position_buffer;
+	/////////////////////////////// step 1 ///////////////////////////////
+
+
+	/////////////////////////////// step 2 ///////////////////////////////
+	lightray_grid_cell_aabb_coordinates_t row_coordinates{};
+	lightray_grid_cell_aabb_coordinates_t column_coordinates{};
+
+	lightray_get_grid_cell_coordinates_aabb(grid, &aabb_world_position, &aabb_world_scale, &row_coordinates, &column_coordinates);
+
+	if (row_coordinates.min < 0 || row_coordinates.max < 0 || column_coordinates.min < 0 || column_coordinates.max < 0)
+	{
+		return SUNDER_FALSE;
+	}
+
+	const u32 grid_cell_index_buffer_offset = scene->collision_attribute_buffer[collision_attribute_index].grid_cell_index_buffer_offset;
+	const u32 aabb_width_per_row = column_coordinates.max - column_coordinates.min + 1;
+
+	for (i32 ri = row_coordinates.min; ri < row_coordinates.max + 1; ri++)
+	{
+		const u32 current_row_index = lightray_get_grid_cell_index(grid, ri, column_coordinates.min);
+		const u32 current_row_count = scene->collision_attribute_buffer[collision_attribute_index].row_count;
+
+		scene->grid_cell_index_buffer[grid_cell_index_buffer_offset + current_row_count] = current_row_index;
+		scene->collision_attribute_buffer[collision_attribute_index].row_count++;
+	}
+
+	scene->collision_attribute_buffer[collision_attribute_index].width_per_row = aabb_width_per_row;
+	const u32 current_row_count = scene->collision_attribute_buffer[collision_attribute_index].row_count;
+
+	for (u32 ci = 0; ci < current_row_count; ci++)
+	{
+		const u32 current_row_cell_index = scene->grid_cell_index_buffer[grid_cell_index_buffer_offset + ci];
+
+		for (u32 j = 0; j < aabb_width_per_row; j++)
+		{
+			const u32 current_cell_index = current_row_cell_index + j;
+			const u32 collision_attribute_grid_cell_index = grid->cell_buffer[current_cell_index].collision_attribute_index_buffer_offset + grid->cell_buffer[current_cell_index].collision_attribute_index_count;
+			grid->collision_attribute_index_buffer[collision_attribute_grid_cell_index] = collision_attribute_index;
+			grid->cell_buffer[current_cell_index].collision_attribute_index_count++;
+		}
+	}
+	/////////////////////////////// step 2 ///////////////////////////////
+
+
+	/////////////////////////////// step 3 ///////////////////////////////
+	const u32 post_grid_population_row_count = scene->collision_attribute_buffer[collision_attribute_index].row_count;
+	const u32 post_grid_population_width = scene->collision_attribute_buffer[collision_attribute_index].width_per_row;
+
+	for (u32 j = 0; j < post_grid_population_row_count; j++)
+	{
+		const u32 grid_cell_index_buffer_current_index = grid_cell_index_buffer_offset + j;
+		const u32 current_cell_index = scene->grid_cell_index_buffer[grid_cell_index_buffer_current_index];
+
+		for (u32 k = 0; k < post_grid_population_width; k++)
+		{
+			const u32 current_cell_buffer_index = current_cell_index + k;
+			const u32 current_collision_attribute_index_buffer_offset = grid->cell_buffer[current_cell_buffer_index].collision_attribute_index_buffer_offset;
+			const u32 current_collision_attribute_index_count = grid->cell_buffer[current_cell_buffer_index].collision_attribute_index_count;
+
+			for (u32 c = 0; c < current_collision_attribute_index_count; c++)
+			{
+				const u32 current_other_collision_attribute_index = grid->collision_attribute_index_buffer[current_collision_attribute_index_buffer_offset + c];
+
+				if (current_other_collision_attribute_index == collision_attribute_index)
+				{
+					continue;
+				}
+
+				if (!(SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_CAN_BE_COLLIDED_WITH_BIT, 1u)))
+				{
+					continue;
+				}
+
+				const u16 current_cw_offset = SUNDER_COMPUTE_BUFFERED_BIT_OFFSET(scene->collision_attribute_buffer[collision_attribute_index].has_already_collided_with_bitmask_buffer_offset);
+
+				if (SUNDER_IS_BUFFERED_BIT_SET(scene->has_already_collided_with_bitmask_buffer, current_cw_offset + current_other_collision_attribute_index))
+				{
+					continue;
+				}
+
+				u64 common_collision_layer_bitmask = 0;
+
+				for (u16 cl = 0; cl < scene->collision_attribute_buffer[collision_attribute_index].collision_layer_count; cl++)
+				{
+					const u32 current_collision_layer_bit = scene->collision_layer_index_buffer[scene->collision_attribute_buffer[collision_attribute_index].collision_layer_index_buffer_offset + cl];
+
+					const b32 self_collision_layer_check = SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].collision_layer_bitmask, current_collision_layer_bit, 1ull);
+					const b32 other_collision_layer_check = SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].collision_layer_bitmask, current_collision_layer_bit, 1ull);
+					const b32 self_collision_layer_exception_check = SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].exception_collision_layer_bitmask, current_collision_layer_bit, 1ull);
+
+					if (self_collision_layer_check && other_collision_layer_check && !self_collision_layer_exception_check)
+					{
+							SUNDER_SET_BIT(common_collision_layer_bitmask, current_collision_layer_bit, 1ull);
+					}
+				}
+
+				if (common_collision_layer_bitmask == 0)
+				{
+					continue;
+				}
+
+				const u32 other_aabb_instance_model_binding_index = scene->entity_buffer[scene->collision_attribute_buffer[current_other_collision_attribute_index].aabb_index].instance_model_binding_index;
+				const sunder_v3_t other_aabb_position = sunder_extract_translation_m4(lightray_copy_glm_mat4_to_sunder(core->cpu_side_render_instance_buffer[other_aabb_instance_model_binding_index].model.model));
+				const sunder_v3_t other_aabb_scale = sunder_extract_scale_m4(lightray_copy_glm_mat4_to_sunder(core->cpu_side_render_instance_buffer[other_aabb_instance_model_binding_index].model.model));
+
+				const b32 aabbs_intersect = lightray_aabbs_intersect(aabb_world_position, aabb_world_scale, other_aabb_position, other_aabb_scale);
+
+				if (aabbs_intersect)
+				{
+					SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_AABB_COLLIDES_BIT, 1u);
+
+					const u32 self_collision_mesh_batch_index = scene->collision_attribute_buffer[collision_attribute_index].collision_mesh_batch_index;
+					const u32 other_collision_mesh_batch_index = scene->collision_attribute_buffer[current_other_collision_attribute_index].collision_mesh_batch_index;
+
+					const u32 self_collision_mesh_count = scene->collision_mesh_batch_buffer[self_collision_mesh_batch_index].collision_mesh_count;
+					const u32 other_collision_mesh_count = scene->collision_mesh_batch_buffer[other_collision_mesh_batch_index].collision_mesh_count;
+
+					const u32 self_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[self_collision_mesh_batch_index].collision_mesh_buffer_offset;
+					const u32 other_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[other_collision_mesh_batch_index].collision_mesh_buffer_offset;
+
+					for (u32 cm = 0; cm < self_collision_mesh_count; cm++)
+					{
+						for (u32 ocm = 0; ocm < other_collision_mesh_count; ocm++)
+						{
+							const sunder_v3_t* self_projected_vertex_position_buffer_ptr = scene->collision_mesh_buffer[self_collision_mesh_buffer_offset + cm].sentinel_world_space_vertex_position_buffer;
+							const sunder_v3_t* other_projected_vertex_position_buffer_ptr = scene->collision_mesh_buffer[other_collision_mesh_buffer_offset + ocm].sentinel_world_space_vertex_position_buffer;
+
+							const u32 self_vertex_count = scene->collision_mesh_buffer[self_collision_mesh_buffer_offset + cm].vertex_count;
+							const u32 other_vertex_count = scene->collision_mesh_buffer[other_collision_mesh_buffer_offset + ocm].vertex_count;
+
+							if (SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].should_reproject_vertices_bitmask, cm, 1u) && !(SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].has_already_projected_vertices_bitmask, cm, 1u)))
+							{
+								
+								lightray_compute_sentinel_world_space_vertex_positions(local_space_vertex_positions, world_space_vertex_positions, capsule_index_count, capsule_new_model);
+								//lightray_initialize_collision_mesh_projected_vertex_buffer(scene, self_collision_mesh_batch_index, cm);
+								SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].has_already_projected_vertices_bitmask, cm, 1u);
+							}
+
+							if (SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].should_reproject_vertices_bitmask, ocm, 1u) && !(SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].has_already_projected_vertices_bitmask, cm, 1u)))
+							{
+								lightray_initialize_collision_mesh_sentinel_world_space_vertex_buffer(scene, other_collision_mesh_batch_index, ocm);
+								SUNDER_SET_BIT(scene->collision_attribute_buffer[current_other_collision_attribute_index].has_already_projected_vertices_bitmask, ocm, 1u);
+							}
+
+							lightray_gjk_support_point_t out_simplex[12]{};
+							u32 out_simplex_size = 0;
+
+							const b32 collision_meshes_intersect = lightray_gjk_intersect(self_projected_vertex_position_buffer_ptr, self_vertex_count, other_projected_vertex_position_buffer_ptr, other_vertex_count, out_simplex, &out_simplex_size);
+
+							if (collision_meshes_intersect)
+							{
+								const lightray_epa_result_t epa_result = lightray_solve_epa(out_simplex, out_simplex_size, self_projected_vertex_position_buffer_ptr, self_vertex_count, other_projected_vertex_position_buffer_ptr, other_vertex_count);
+
+
+								if (epa_result.hit)
+								{
+									//scene->position_buffer[cube.index] = epa_result.contact_point;
+									//scene->scale_buffer[cube.index] = sunder_v3_scalar(0.1f);
+									const u32 entity_index = scene->collision_attribute_buffer[collision_attribute_index].entity_index;
+
+									const f32 squared_distance = sunder_squared_distance_v3(epa_result.contact_point, scene->position_buffer[entity_index]);
+									const f32 previous_squared_distance = scene->temp_contact_point_squared_distance_buffer[collision_attribute_index];
+
+									if (squared_distance < previous_squared_distance)
+									{
+										scene->temp_contact_point_squared_distance_buffer[collision_attribute_index] = squared_distance;
+										scene->closest_epa_result_buffer[collision_attribute_index] = epa_result;
+									}
+								}
+
+
+									/*
+									SUNDER_LOG("\n\nepa_result\n");
+									SUNDER_LOG("hit: ");
+									SUNDER_LOG(epa_result.hit);
+									SUNDER_LOG("\ndepth: ");
+									SUNDER_LOG(epa_result.depth);
+									SUNDER_LOG("\ncontact_point: ");
+									sunder_log_v3(epa_result.contact_point);
+									SUNDER_LOG("\nnormal: ");
+									sunder_log_v3(epa_result.normal);
+									*/
+
+								SUNDER_SET_BUFFERED_BIT(scene->game_side_entity_kind_bitmask_buffer, (SUNDER_COMPUTE_BUFFERED_BIT_OFFSET(scene->collision_attribute_buffer[collision_attribute_index].game_side_entity_kind_bitmask_buffer_offset)) + scene->collision_attribute_buffer[current_other_collision_attribute_index].game_side_entity_kind);
+								SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLIDES_BIT, 1u);
+								SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLISION_MESHES_COLLIDE_BIT, 1u);
+								SUNDER_SET_BUFFERED_BIT(scene->has_already_collided_with_bitmask_buffer, current_cw_offset + current_other_collision_attribute_index);
+								scene->collision_attribute_buffer[collision_attribute_index].collision_layer_result_bitmask |= common_collision_layer_bitmask;
+
+								break;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	/////////////////////////////// step 3 ///////////////////////////////
+
+	if(lightray_collision_attribute_collides(scene, collision_attribute_index))
+	{
+		return SUNDER_TRUE;
+	}
+
+	return SUNDER_FALSE;
+}
+
+void lightray_vulkan_collision_test0(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale, u32* grid_cell_index_buffer, u32* grid_cell_index_count)
+{
+	const u32 aabb_index = scene->collision_attribute_buffer[collision_attribute_index].aabb_index;
+
+	// const sunder_m4_t new_collision_attribute_model = sunder_m4_model(position, rotation, scale);
+    // const sunder_m4_t aabb_new_model = new_collision_attribute_model * sunder_m4_model(scene->position_buffer[aabb_index], scene->quat_rotation_buffer[aabb_index], scene->scale_buffer[aabb_index]);
+
+	const sunder_v3_t aabb_world_position = position; //sunder_extract_translation_m4(aabb_new_model);
+	const sunder_v3_t aabb_world_scale = scene->scale_buffer[aabb_index]; //sunder_extract_scale_m4(aabb_new_model);
+
+	lightray_grid_cell_aabb_coordinates_t row_coordinates{};
+	lightray_grid_cell_aabb_coordinates_t column_coordinates{};
+
+	lightray_get_grid_cell_coordinates_aabb(grid, &aabb_world_position, &aabb_world_scale, &row_coordinates, &column_coordinates);
+
+	if (row_coordinates.min < 0 || row_coordinates.max < 0 || column_coordinates.min < 0 || column_coordinates.max < 0)
+	{
+		return;
+	}
+
+	const u32 grid_cell_index_buffer_offset = scene->collision_attribute_buffer[collision_attribute_index].grid_cell_index_buffer_offset;
+	const u32 aabb_width_per_row = column_coordinates.max - column_coordinates.min + 1;
+
+	for (i32 ri = row_coordinates.min; ri < row_coordinates.max + 1; ri++)
+	{
+		const u32 current_row_index = lightray_get_grid_cell_index(grid, ri, column_coordinates.min);
+		const u32 current_row_count = scene->collision_attribute_buffer[collision_attribute_index].row_count;
+
+		scene->grid_cell_index_buffer[grid_cell_index_buffer_offset + current_row_count] = current_row_index;
+		scene->collision_attribute_buffer[collision_attribute_index].row_count++;
+	}
+
+	scene->collision_attribute_buffer[collision_attribute_index].width_per_row = aabb_width_per_row;
+	const u32 current_row_count = scene->collision_attribute_buffer[collision_attribute_index].row_count;
+
+	for (u32 ci = 0; ci < current_row_count; ci++)
+	{
+		const u32 current_row_cell_index = scene->grid_cell_index_buffer[grid_cell_index_buffer_offset + ci];
+
+		for (u32 j = 0; j < aabb_width_per_row; j++)
+		{
+			const u32 current_cell_index = current_row_cell_index + j;
+			grid_cell_index_buffer[*grid_cell_index_count] = current_cell_index;
+			(*grid_cell_index_count)++;
+
+			const u32 grid_cell_collision_attribute_index = grid->cell_buffer[current_cell_index].collision_attribute_index_buffer_offset + grid->cell_buffer[current_cell_index].collision_attribute_index_count;
+			grid->collision_attribute_index_buffer[grid_cell_collision_attribute_index] = collision_attribute_index;
+			grid->cell_buffer[current_cell_index].collision_attribute_index_count++;
+		}
+	}
+}
+
+void lightray_vulkan_collision_test_reset(lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, u32* grid_cell_index_buffer, u32 grid_cell_index_count)
+{
+	scene->collision_attribute_buffer[collision_attribute_index].row_count = 0;
+	scene->collision_attribute_buffer[collision_attribute_index].width_per_row = 0;
+	
+	for (u32 i = 0; i < grid_cell_index_count; i++)
+	{
+		const u32 wanted_grid_cell_index = grid_cell_index_buffer[i];
+		grid->cell_buffer[wanted_grid_cell_index].collision_attribute_index_count--;
+	}
+
+	for (u32 rcbt = 0; rcbt < scene->total_has_already_been_traced_bitmask_count; rcbt++)
+	{
+		scene->has_already_been_traced_bitmask_subarena[rcbt] = 0;
+	}
+
+	const u32 collision_mesh_per_batch_count = scene->collision_mesh_batch_buffer[scene->collision_attribute_buffer[collision_attribute_index].collision_mesh_batch_index].collision_mesh_count;
+
+	for (u32 cmi = 0; cmi < collision_mesh_per_batch_count; cmi++)
+	{
+		if ((SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].should_reproject_vertices_bitmask, cmi, 1u)))
+		{
+			SUNDER_ZERO_BIT(scene->collision_attribute_buffer[collision_attribute_index].has_already_projected_vertices_bitmask, cmi, 1u);
+		}
+	}
+
+	SUNDER_ZERO_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLIDES_BIT, 1u);
+	SUNDER_ZERO_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_AABB_COLLIDES_BIT, 1u);
+	SUNDER_ZERO_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLISION_MESHES_COLLIDE_BIT, 1u);
+
+	const u32 has_already_collided_with_bitmask_buffer_offset = scene->collision_attribute_buffer[collision_attribute_index].has_already_collided_with_bitmask_buffer_offset;
+
+	for (u32 bb = 0; bb < scene->has_already_collided_with_bitmask_per_collision_attribute_count; bb++)
+	{
+		scene->has_already_collided_with_bitmask_buffer[has_already_collided_with_bitmask_buffer_offset + bb] = 0;
+	}
+
+	const u32 game_side_entity_kind_bitmask_buffer_offset = scene->collision_attribute_buffer[collision_attribute_index].game_side_entity_kind_bitmask_buffer_offset;
+
+	for (u32 gmei = 0; gmei < scene->game_side_entity_kind_bitmask_per_collision_attribute_count; gmei++)
+	{
+		scene->game_side_entity_kind_bitmask_buffer[game_side_entity_kind_bitmask_buffer_offset + gmei] = 0;
+	}
+}
+
+b32 lightray_vulkan_collision_test1(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale, u32 line_entity_index)
+{
+	//const sunder_m4_t collision_attribute_entity_model = sunder_m4_model(position, rotation, scale);
+	const sunder_m4_t collision_attribute_entity_model = sunder_m4(scale.x, 0.0f, 0.0f, position.x,
+																										  0.0f, scale.y, 0.0f, position.y,
+																										  0.0f, 0.0f, scale.z, position.z,
+																										  0.0f, 0.0f, 0.0f, 1.0f);
+
+	const u32 collision_attribute_aabb_index = scene->collision_attribute_buffer[collision_attribute_index].aabb_index;
+	//const sunder_m4_t new_aabb_model = collision_attribute_entity_model * sunder_m4_model(scene->position_buffer[collision_attribute_aabb_index], scene->quat_rotation_buffer[collision_attribute_aabb_index], scene->scale_buffer[collision_attribute_aabb_index]);
+
+	const sunder_v3_t aabb_world_position = position; //sunder_extract_translation_m4(new_aabb_model);
+	const sunder_v3_t aabb_world_scale = scene->scale_buffer[collision_attribute_aabb_index]; // sunder_extract_scale_m4(new_aabb_model);
+
+	//const u32 cube_index_count = core->mesh_render_pass_data_buffer[lightray_vulkan_get_reordered_global_mesh_index(core, 3)].index_count;
+	const u32 cube_index_buffer_offset = core->mesh_render_pass_data_buffer[lightray_vulkan_get_reordered_global_mesh_index(core, 3)].index_buffer_offset;
+
+	const u32 collision_mesh_batch_index = scene->collision_attribute_buffer[collision_attribute_index].collision_mesh_batch_index;
+	const u32 collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_buffer_offset;
+	const u32 cube_collision_mesh_entity_index = scene->collision_mesh_buffer[collision_mesh_buffer_offset].entity_index;
+	const u32 cube_sentinel_vertex_count = scene->collision_mesh_buffer[collision_mesh_buffer_offset].sentinel_vertex_count;
+	const u32 cube_sentinel_local_space_buffer_offset = scene->collision_mesh_buffer[collision_mesh_buffer_offset].sentinel_local_space_vertex_position_buffer_offset;
+	const u32 cube_sentinel_index_buffer_offset = scene->collision_mesh_buffer[collision_mesh_buffer_offset].sentinel_index_buffer_offset;
+
+	const sunder_v3_t* local_space_vertex_positions = scene->sentinel_local_space_vertex_position_buffer + cube_sentinel_local_space_buffer_offset;
+	sunder_v3_t* world_space_vertex_positions = scene->collision_mesh_buffer[collision_mesh_buffer_offset].sentinel_world_space_vertex_position_buffer;
+	const sunder_m4_t new_cube_collision_mesh_model = collision_attribute_entity_model; // * sunder_m4_model(scene->position_buffer[cube_collision_mesh_entity_index], scene->quat_rotation_buffer[cube_collision_mesh_entity_index], scene->scale_buffer[cube_collision_mesh_entity_index]);
+
+		const u32 grid_cell_index_buffer_offset = scene->collision_attribute_buffer[collision_attribute_index].grid_cell_index_buffer_offset;
+		const u32 row_count = scene->collision_attribute_buffer[collision_attribute_index].row_count;
+		const u32 width = scene->collision_attribute_buffer[collision_attribute_index].width_per_row;
+
+		for (u32 j = 0; j < row_count; j++)
+		{
+			const u32 grid_cell_index_buffer_current_index = grid_cell_index_buffer_offset + j;
+			const u32 current_cell_index = scene->grid_cell_index_buffer[grid_cell_index_buffer_current_index];
+
+			for (u32 k = 0; k < width; k++)
+			{
+				const u32 current_cell_buffer_index = current_cell_index + k;
+				const u32 current_collision_attribute_index_buffer_offset = grid->cell_buffer[current_cell_buffer_index].collision_attribute_index_buffer_offset;
+				const u32 current_collision_attribute_index_count = grid->cell_buffer[current_cell_buffer_index].collision_attribute_index_count;
+
+				for (u32 c = 0; c < current_collision_attribute_index_count; c++)
+				{
+					const u32 current_other_collision_attribute_index = grid->collision_attribute_index_buffer[current_collision_attribute_index_buffer_offset + c];
+
+					if (current_other_collision_attribute_index == collision_attribute_index)
+					{
+						continue;
+					}
+
+					if (!(SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_CAN_BE_COLLIDED_WITH_BIT, 1u)))
+					{
+						continue;
+					}
+
+					const u16 current_cw_offset = SUNDER_COMPUTE_BUFFERED_BIT_OFFSET(scene->collision_attribute_buffer[collision_attribute_index].has_already_collided_with_bitmask_buffer_offset);
+
+					if (SUNDER_IS_BUFFERED_BIT_SET(scene->has_already_collided_with_bitmask_buffer, current_cw_offset + current_other_collision_attribute_index))
+					{
+						continue;
+					}
+
+					u64 common_collision_layer_bitmask = 0;
+
+					for (u16 cl = 0; cl < scene->collision_attribute_buffer[collision_attribute_index].collision_layer_count; cl++)
+					{
+						const u32 current_collision_layer_bit = scene->collision_layer_index_buffer[scene->collision_attribute_buffer[collision_attribute_index].collision_layer_index_buffer_offset + cl];
+
+						const b32 self_collision_layer_check = SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].collision_layer_bitmask, current_collision_layer_bit, 1ull);
+						const b32 other_collision_layer_check = SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].collision_layer_bitmask, current_collision_layer_bit, 1ull);
+						const b32 self_collision_layer_exception_check = SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].exception_collision_layer_bitmask, current_collision_layer_bit, 1ull);
+
+						if (self_collision_layer_check && other_collision_layer_check && !self_collision_layer_exception_check)
+						{
+							SUNDER_SET_BIT(common_collision_layer_bitmask, current_collision_layer_bit, 1ull);
+						}
+					}
+
+					if (common_collision_layer_bitmask == 0)
+					{
+						continue;
+					}
+
+					const u32 other_aabb_instance_model_binding_index = scene->entity_buffer[scene->collision_attribute_buffer[current_other_collision_attribute_index].aabb_index].instance_model_binding_index;
+					const sunder_v3_t other_aabb_position = sunder_extract_translation_m4(lightray_copy_glm_mat4_to_sunder(core->cpu_side_render_instance_buffer[other_aabb_instance_model_binding_index].model.model));
+					const sunder_v3_t other_aabb_scale = sunder_extract_scale_m4(lightray_copy_glm_mat4_to_sunder(core->cpu_side_render_instance_buffer[other_aabb_instance_model_binding_index].model.model));
+
+					const b32 aabbs_intersect = lightray_aabbs_intersect(aabb_world_position, aabb_world_scale, other_aabb_position, other_aabb_scale);
+
+					if (aabbs_intersect)
+					{
+						SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_AABB_COLLIDES_BIT, 1u);
+
+						const u32 self_collision_mesh_batch_index = scene->collision_attribute_buffer[collision_attribute_index].collision_mesh_batch_index;
+						const u32 other_collision_mesh_batch_index = scene->collision_attribute_buffer[current_other_collision_attribute_index].collision_mesh_batch_index;
+
+						const u32 self_collision_mesh_count = scene->collision_mesh_batch_buffer[self_collision_mesh_batch_index].collision_mesh_count;
+						const u32 other_collision_mesh_count = scene->collision_mesh_batch_buffer[other_collision_mesh_batch_index].collision_mesh_count;
+
+						const u32 self_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[self_collision_mesh_batch_index].collision_mesh_buffer_offset;
+						const u32 other_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[other_collision_mesh_batch_index].collision_mesh_buffer_offset;
+
+						for (u32 cm = 0; cm < self_collision_mesh_count; cm++)
+						{
+							for (u32 ocm = 0; ocm < other_collision_mesh_count; ocm++)
+							{
+								const sunder_v3_t* other_projected_vertex_position_buffer_ptr = scene->collision_mesh_buffer[other_collision_mesh_buffer_offset + ocm].sentinel_world_space_vertex_position_buffer;
+								const u32 other_sentinel_vertex_count = scene->collision_mesh_buffer[other_collision_mesh_buffer_offset + ocm].sentinel_vertex_count;
+							
+								if (SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].should_reproject_vertices_bitmask, cm, 1u) && !(SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[collision_attribute_index].has_already_projected_vertices_bitmask, cm, 1u)))
+								{
+									lightray_compute_sentinel_world_space_vertex_positions(local_space_vertex_positions, world_space_vertex_positions, cube_sentinel_vertex_count, new_cube_collision_mesh_model);
+									SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].has_already_projected_vertices_bitmask, cm, 1u);
+								}
+
+								if (SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].should_reproject_vertices_bitmask, ocm, 1u) && !(SUNDER_IS_ANY_BIT_SET(scene->collision_attribute_buffer[current_other_collision_attribute_index].has_already_projected_vertices_bitmask, ocm, 1u)))
+								{
+									lightray_initialize_collision_mesh_sentinel_world_space_vertex_buffer(scene, other_collision_mesh_batch_index, ocm);
+									SUNDER_SET_BIT(scene->collision_attribute_buffer[current_other_collision_attribute_index].has_already_projected_vertices_bitmask, ocm, 1u);
+								}
+
+								lightray_gjk_support_point_t out_simplex[12]{};
+								u32 out_simplex_size = 0;
+
+								const b32 collision_meshes_intersect = lightray_gjk_intersect(world_space_vertex_positions, cube_sentinel_vertex_count, other_projected_vertex_position_buffer_ptr, other_sentinel_vertex_count, out_simplex, &out_simplex_size);
+
+								if (collision_meshes_intersect)
+								{
+									SUNDER_SET_BUFFERED_BIT(scene->game_side_entity_kind_bitmask_buffer, (SUNDER_COMPUTE_BUFFERED_BIT_OFFSET(scene->collision_attribute_buffer[collision_attribute_index].game_side_entity_kind_bitmask_buffer_offset)) + scene->collision_attribute_buffer[current_other_collision_attribute_index].game_side_entity_kind);
+									SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLIDES_BIT, 1u);
+									SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLISION_MESHES_COLLIDE_BIT, 1u);
+									SUNDER_SET_BUFFERED_BIT(scene->has_already_collided_with_bitmask_buffer, current_cw_offset + current_other_collision_attribute_index);
+									scene->collision_attribute_buffer[collision_attribute_index].collision_layer_result_bitmask |= common_collision_layer_bitmask;
+
+									break;
+								}
+							}
+
+							break;
+						}
+					}
+				}
+			}
+		}
+	
+		if (lightray_collision_attribute_collides(scene, collision_attribute_index))
+		{
+			return SUNDER_TRUE;
+		}
+
+	return SUNDER_FALSE;
+}
+
+sunder_v3_t lightray_vulkan_project_capsule_onto_plane(const lightray_vulkan_core_t* core, lightray_grid_t* grid, lightray_scene_t* scene, const sunder_v3_t& pre_raycast_capsule_position, u32 capsule_collision_mesh_batch_index, u32 capsule_collision_mesh_index, u32 cube_entity_index, u32 line_trace_entity_index)
+{
+	const u32 capsule_global_collision_mesh_index = scene->collision_mesh_batch_buffer[capsule_collision_mesh_batch_index].collision_mesh_buffer_offset + capsule_collision_mesh_index;
+	const u32 sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[capsule_global_collision_mesh_index].sentinel_local_space_vertex_position_buffer_offset;
+	const u32 capsule_sentinel_vertex_count = scene->collision_mesh_buffer[capsule_global_collision_mesh_index].sentinel_vertex_count;
+	sunder_v3_t* capsule_sentinel_world_space_vertex_position_buffer = scene->collision_mesh_buffer[capsule_global_collision_mesh_index].sentinel_world_space_vertex_position_buffer;
+	const u32 capsule_entity_index = scene->collision_mesh_buffer[capsule_global_collision_mesh_index].entity_index;
+	const u32 capsule_instance_model_binding_index = scene->entity_buffer[capsule_entity_index].instance_model_binding_index;
+	const u32 capsule_parent_entity_index = scene->entity_buffer[capsule_entity_index].parent_index;
+	const u32 capsule_parent_collision_attribute_index = scene->entity_buffer[capsule_parent_entity_index].collision_attribute_index;
+
+	const sunder_m4_t new_capsule_model = sunder_m4_translation(pre_raycast_capsule_position);
+	lightray_compute_sentinel_world_space_vertex_positions_via_index_buffer(scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer, scene->sentinel_local_space_vertex_position_buffer + sentinel_local_space_vertex_position_buffer_offset, capsule_sentinel_world_space_vertex_position_buffer, scene->capsule_beyond_lower_clipping_plane_sentinel_index_count, new_capsule_model);
+	core->cpu_side_render_instance_buffer[capsule_instance_model_binding_index].model.model = lightray_copy_sunder_m4_to_glm(new_capsule_model);
+
+	const u32 raycast_grid_cell_index_per_ray_count = 5;
+	const u32 raycast_pierce_layer_test_data_per_ray_count = 5;
+	u32 raycast_grid_cell_index_subarena_offset = 0;
+	u32 has_already_been_traced_bitmask_subarena_offset = 0;
+	u32 raycast_pierce_layer_test_data_subarena_offset = 0;
+
+	lightray_reserve_raycast_memory(scene, raycast_grid_cell_index_per_ray_count, raycast_pierce_layer_test_data_per_ray_count, &raycast_grid_cell_index_subarena_offset, &has_already_been_traced_bitmask_subarena_offset, &raycast_pierce_layer_test_data_subarena_offset);
+
+	u32 collision_layer_index_buffer[2]{};
+	collision_layer_index_buffer[0] = 1;
+	collision_layer_index_buffer[1] = 2;
+
+	lightray_raycast_pierce_layer_t pierce_layer_buffer[1]{};
+	pierce_layer_buffer[0].layer = 0;
+	pierce_layer_buffer[0].threshold = 1;
+
+	const lightray_ray_t ray = lightray_ray(pre_raycast_capsule_position, sunder_v3(0.0f, 0.0f, -1.0f), 100.0f);
+
+	lightray_raycast_data_t raycast_data{};
+	raycast_data.collision_layer_index_buffer = collision_layer_index_buffer;
+	raycast_data.grid = grid;
+	raycast_data.collision_layer_bitmask = (1ull << 1) | (1ull << 2);
+	raycast_data.cull_collision_layer_bitmask = 0;
+	raycast_data.pierce_layer_buffer = pierce_layer_buffer;
+	raycast_data.pierce_layer_count = 1;
+	raycast_data.collision_layer_index_count = 2;
+	raycast_data.ray = ray;
+	raycast_data.capsule_collision_attribute_index = capsule_parent_collision_attribute_index;
+	raycast_data.capsule_collision_mesh_index = capsule_collision_mesh_index;
+	raycast_data.has_already_been_traced_bitmask_subarena_offset = has_already_been_traced_bitmask_subarena_offset;
+	raycast_data.raycast_grid_cell_index_subarena_offset = raycast_grid_cell_index_subarena_offset;
+	raycast_data.raycast_grid_cell_index_count = raycast_grid_cell_index_per_ray_count;
+	raycast_data.raycast_pierce_layer_test_data_subarena_offset = raycast_pierce_layer_test_data_subarena_offset;
+	raycast_data.raycast_pierce_layer_test_data_count = raycast_pierce_layer_test_data_per_ray_count;
+	raycast_data.flags = (1ull << LIGHTRAY_RAYCAST_BITS_MARK_INTERSECTION_POINT_BIT) | (1ull << LIGHTRAY_RAYCAST_BITS_TRACE_LINE_BIT) | (1ull << LIGHTRAY_RAYCAST_BITS_PIERCE_BIT) | (1ull << LIGHTRAY_RAYCAST_BITS_EXTERNAL_INVERSE_WRITE_BIT) | (1ull << LIGHTRAY_RAYCAST_BITS_ENTRY_BIT);
+	raycast_data.cube_entity_index = cube_entity_index;
+	raycast_data.line_trace_entity_index = line_trace_entity_index;
+	raycast_data.culling_mode = LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_NONE;
+
+	u32 out_raycast_pierce_layer_test_data_count = 0;
+	u16 external_inverse_written_count = 0;
+	sunder_m4_t external_inverse_buffer[2]{};
+
+	lightray_vulkan_cast_ray(core, scene, &raycast_data, &out_raycast_pierce_layer_test_data_count, &external_inverse_written_count, external_inverse_buffer);
+		
+	if (out_raycast_pierce_layer_test_data_count < 2)
+	{
+		return sunder_v3_scalar(0.0f);
+	}
+
+	const u32 plane_collision_attribute_index = scene->pierce_layer_test_data_subarena[raycast_pierce_layer_test_data_subarena_offset + 1].collision_attribute_index;
+	const u32 plane_collision_mesh_batch_index = scene->collision_attribute_buffer[plane_collision_attribute_index].collision_mesh_batch_index;
+	const u32 plane_collision_mesh_global_index = scene->collision_mesh_batch_buffer[plane_collision_mesh_batch_index].collision_mesh_buffer_offset;
+	const sunder_m4_t plane_model = lightray_copy_glm_mat4_to_sunder(scene->collision_mesh_buffer[plane_collision_mesh_global_index].model->model);
+	const u32 plane_vertex_count = scene->collision_mesh_buffer[plane_collision_mesh_global_index].vertex_count;
+	const u32 plane_sentinel_vertex_count = scene->collision_mesh_buffer[plane_collision_mesh_global_index].sentinel_vertex_count;
+	const u32 plane_sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[plane_collision_mesh_global_index].sentinel_local_space_vertex_position_buffer_offset;
+	const sunder_v3_t* plane_world_space_vertex_position_buffer = scene->collision_mesh_buffer[plane_collision_mesh_global_index].sentinel_world_space_vertex_position_buffer;
+
+	sunder_v3_t cluster_origin_buffer[19]{};
+	sunder_v3_t capsule_intersection_point_buffer[19]{};
+	sunder_v3_t plane_intersection_point_buffer[19]{};
+	u16 hit_mapping_buffer[19]{};
+	u16 hit_mapping_buffer_iter = 0;
+	u64 capsule_hit_bitmask = 0;
+	u64 plane_hit_bitmask = 0;
+	u32 closest_ray_index = 0;
+	f32 closest_squared_distance = FLT_MAX;
+
+	
+	//u32 v_index = 0;
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[0];
+
+	cluster_origin_buffer[0] = capsule_sentinel_world_space_vertex_position_buffer[0];
+	cluster_origin_buffer[0].x -= LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
+	cluster_origin_buffer[0].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[1];
+	cluster_origin_buffer[1] = capsule_sentinel_world_space_vertex_position_buffer[1];
+	cluster_origin_buffer[1].y -= LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
+	cluster_origin_buffer[1].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[2];
+	cluster_origin_buffer[2] = capsule_sentinel_world_space_vertex_position_buffer[2];
+	cluster_origin_buffer[2].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[3];
+	cluster_origin_buffer[3] = capsule_sentinel_world_space_vertex_position_buffer[3];
+	cluster_origin_buffer[3].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[4];
+	cluster_origin_buffer[4] = capsule_sentinel_world_space_vertex_position_buffer[4];
+	cluster_origin_buffer[4].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[5];
+	cluster_origin_buffer[5] = capsule_sentinel_world_space_vertex_position_buffer[5];
+	cluster_origin_buffer[5].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[6];
+	cluster_origin_buffer[6] = capsule_sentinel_world_space_vertex_position_buffer[6];
+	cluster_origin_buffer[6].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[7];
+	cluster_origin_buffer[7] = capsule_sentinel_world_space_vertex_position_buffer[7];
+	cluster_origin_buffer[7].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[8];
+	cluster_origin_buffer[8] = capsule_sentinel_world_space_vertex_position_buffer[8];
+	cluster_origin_buffer[8].x -= LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
+	cluster_origin_buffer[8].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[9];
+	cluster_origin_buffer[9] = capsule_sentinel_world_space_vertex_position_buffer[9];
+	cluster_origin_buffer[9].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[10];
+	cluster_origin_buffer[10] = capsule_sentinel_world_space_vertex_position_buffer[10];
+	cluster_origin_buffer[10].y += LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
+	cluster_origin_buffer[10].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[11];
+	cluster_origin_buffer[11] = capsule_sentinel_world_space_vertex_position_buffer[11];
+	cluster_origin_buffer[11].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[12];
+	cluster_origin_buffer[12] = capsule_sentinel_world_space_vertex_position_buffer[12];
+	cluster_origin_buffer[12].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[13];
+	cluster_origin_buffer[13] = capsule_sentinel_world_space_vertex_position_buffer[13];
+	cluster_origin_buffer[13].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[14];
+	cluster_origin_buffer[14] = capsule_sentinel_world_space_vertex_position_buffer[14];
+	cluster_origin_buffer[14].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[15];
+	cluster_origin_buffer[15] = capsule_sentinel_world_space_vertex_position_buffer[15];
+	cluster_origin_buffer[15].x += LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
+	cluster_origin_buffer[15].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[16];
+	cluster_origin_buffer[16] = capsule_sentinel_world_space_vertex_position_buffer[16];
+	cluster_origin_buffer[16].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[17];
+	cluster_origin_buffer[17] = capsule_sentinel_world_space_vertex_position_buffer[17];
+	cluster_origin_buffer[17].x += LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
+	cluster_origin_buffer[17].z += 2.0f;
+
+	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[18];
+	cluster_origin_buffer[18] = capsule_sentinel_world_space_vertex_position_buffer[18];
+	cluster_origin_buffer[18].z += 2.0f;
+
+
+	const sunder_v3_t capsule_ray_direction = sunder_normalize_v3(sunder_v3_v4(external_inverse_buffer[1] * sunder_v4_v3(sunder_v3(0.0f, 0.0f, -1.0f), 0.0f)));
+	const sunder_v3_t plane_ray_direction = sunder_normalize_v3(sunder_v3_v4(external_inverse_buffer[0] * sunder_v4_v3(sunder_v3(0.0f, 0.0f, -1.0f), 0.0f)));
+	
+	for (u32 r = 0; r < 19; r++)
+	{
+		lightray_ray_t capsule_ray{};
+		capsule_ray.origin = sunder_v3_v4(external_inverse_buffer[1] * sunder_v4_v3(cluster_origin_buffer[r], 1.0f));
+		capsule_ray.direction = capsule_ray_direction;
+		capsule_ray.distance = 100.0f;
+
+		f32 out_t = 0.0f;
+		f32 out_u = 0.0f;
+		f32 out_v = 0.0f;
+
+		sunder_v3_t v0{};
+		sunder_v3_t v1{};
+		sunder_v3_t v2{};
+
+		for (u32 v = 0; v < scene->capsule_beyond_lower_clipping_plane_triangle_index_count; v++)
+		{
+			const u32 v0_index = scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer[v + 0];
+			const u32 v1_index = scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer[v + 1];
+			const u32 v2_index = scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer[v + 2];
+
+			sunder_v3_t tri[3]{};
+			tri[0] = scene->sentinel_local_space_vertex_position_buffer[sentinel_local_space_vertex_position_buffer_offset + v0_index];
+			tri[1] = scene->sentinel_local_space_vertex_position_buffer[sentinel_local_space_vertex_position_buffer_offset + v1_index];
+			tri[2] = scene->sentinel_local_space_vertex_position_buffer[sentinel_local_space_vertex_position_buffer_offset + v2_index];
+
+			const b32 intersects = lightray_ray_triangle_intersect(&capsule_ray, tri, &out_t, &out_u, &out_v, LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_NONE, &v0, &v1, &v2);
+
+			if (intersects)
+			{
+				sunder_v3_t intersection_point = capsule_ray.origin + capsule_ray.direction * out_t;
+				intersection_point = sunder_v3_v4(new_capsule_model * sunder_v4_v3(intersection_point, 1.0f));
+				capsule_intersection_point_buffer[r] = intersection_point;
+				SUNDER_SET_BIT(capsule_hit_bitmask, r, 1ull);
+
+				break;
+			}
+		}
+
+		if (!(SUNDER_IS_ANY_BIT_SET(capsule_hit_bitmask, r, 1ull)))
+		{
+			continue;
+		}
+
+		lightray_ray_t plane_ray{};
+		plane_ray.origin = sunder_v3_v4(external_inverse_buffer[0] * sunder_v4_v3(cluster_origin_buffer[r], 1.0f));
+		plane_ray.direction = plane_ray_direction;
+		plane_ray.distance = 100.0f;
+
+		out_t = 0.0f;
+		out_u = 0.0f;
+		out_v = 0.0f;
+
+		v0 = sunder_v3_scalar(0.0f);
+		v1 = sunder_v3_scalar(0.0f);
+		v2 = sunder_v3_scalar(0.0f);
+
+		for (u32 v = 0; v < plane_vertex_count; v++)
+		{
+			const u32 v0_index = scene->sentinel_index_buffer[v + 0];
+			const u32 v1_index = scene->sentinel_index_buffer[v + 1];
+			const u32 v2_index = scene->sentinel_index_buffer[v + 2];
+
+			sunder_v3_t tri[3]{};
+			tri[0] = scene->sentinel_local_space_vertex_position_buffer[v0_index];
+			tri[1] = scene->sentinel_local_space_vertex_position_buffer[v1_index];
+			tri[2] = scene->sentinel_local_space_vertex_position_buffer[v2_index];
+
+			const b32 intersects = lightray_ray_triangle_intersect(&plane_ray, tri, &out_t, &out_u, &out_v, LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_BACKFACE, &v0, &v1, &v2);
+
+			if (intersects)
+			{
+				sunder_v3_t intersection_point = plane_ray.origin + plane_ray.direction * out_t;
+				intersection_point = sunder_v3_v4(plane_model * sunder_v4_v3(intersection_point, 1.0f));
+				plane_intersection_point_buffer[r] = intersection_point;
+				SUNDER_SET_BIT(plane_hit_bitmask, r, 1ull);
+
+				break;
+			}
+		}
+
+	}
+
+	for (u32 i = 0; i < 19; i++)
+	{
+		if (SUNDER_IS_ANY_BIT_SET(capsule_hit_bitmask, i, 1ull) && SUNDER_IS_ANY_BIT_SET(plane_hit_bitmask, i, 1ull))
+		{
+			hit_mapping_buffer[hit_mapping_buffer_iter] = i;
+			hit_mapping_buffer_iter++;
+		}
+	}
+
+	for (u32 i = 0; i < hit_mapping_buffer_iter; i++)
+	{
+		const u16 id = hit_mapping_buffer[i];
+		const f32 squared_distance = sunder_squared_distance_v3(plane_intersection_point_buffer[id], capsule_intersection_point_buffer[id]);
+
+		if (squared_distance < closest_squared_distance)
+		{
+			closest_squared_distance = squared_distance;
+			closest_ray_index = i;
+		}
+
+	}
+
+	const u16 li = hit_mapping_buffer[closest_ray_index];
+	const f32 distance = sunder_distance_v3(plane_intersection_point_buffer[li], capsule_intersection_point_buffer[li]) - LIGHTRAY_CAPSULE_ONTO_PLANE_PROJECTION_RAY_RECOVERY_EPSILON;
+
+	sunder_v3_t capsule_projected_position = pre_raycast_capsule_position;
+	capsule_projected_position.z -= distance;
+	
+	while (SUNDER_TRUE)
+	{
+		lightray_gjk_support_point_t simplex[4]{};
+		u32 simplex_size = 0;
+
+		lightray_compute_sentinel_world_space_vertex_positions(scene->sentinel_local_space_vertex_position_buffer + sentinel_local_space_vertex_position_buffer_offset, capsule_sentinel_world_space_vertex_position_buffer, capsule_sentinel_vertex_count, sunder_m4_translation(capsule_projected_position));
+		const b32 intersects = lightray_gjk_intersect(capsule_sentinel_world_space_vertex_position_buffer, capsule_sentinel_vertex_count, plane_world_space_vertex_position_buffer, plane_sentinel_vertex_count, simplex, &simplex_size);
+
+		if (intersects)
+		{
+			const lightray_epa_result_t epa_result = lightray_solve_epa(simplex, simplex_size, capsule_sentinel_world_space_vertex_position_buffer, capsule_sentinel_vertex_count, plane_world_space_vertex_position_buffer, plane_vertex_count);
+
+			const f32 delta = epa_result.depth + LIGHTRAY_CAPSULE_ONTO_PLANE_POST_PROJECTION_PLACEMENT_RECOVERY_EPSILON;
+			capsule_projected_position.z += delta;
+		}
+
+		else
+		{
+			break;
+		}
+	}
+
+	return capsule_projected_position;
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	//for (u32 i = 0; i < scene->capsule_beyond_lower_clipping_plane_sentinel_index_count; i++)
+	//{
+		//const u32 v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[i];
+		//cluster_origin_buffer[i] = capsule_sentinel_world_space_vertex_position_buffer[v_index];
+		//cluster_origin_buffer[i].z += 2.0f;
+	//}
+
+	/*
+	const lightray_ray_t plane_ray = lightray_ray(cluster_origin_buffer[18], sunder_v3(0.0f, 0.0f, -1.0f), 1000.0f);
+	const lightray_ray_t transformed_plane_ray(sunder_v3_v4(sunder_m4_inverse(plane_model) * sunder_v4_v3(plane_ray.origin, 1.0f)), sunder_normalize_v3(sunder_v3_v4(sunder_m4_inverse(plane_model) * sunder_v4_v3(plane_ray.direction, 0.0f))), plane_ray.distance);
+
+	f32 out_t = 0.0f;
+	f32 out_u = 0.0f;
+	f32 out_v = 0.0f;
+
+	sunder_v3_t v0{};
+	sunder_v3_t v1{};
+	sunder_v3_t v2{};
+
+	for (u32 v = 0; v < plane_vertex_count; v += 3)
+	{
+		const u32 v0_index = scene->sentinel_index_buffer[v + 0];
+		const u32 v1_index = scene->sentinel_index_buffer[v + 1];
+		const u32 v2_index = scene->sentinel_index_buffer[v + 2];
+
+		sunder_v3_t tri[3]{};
+		tri[0] = scene->sentinel_local_space_vertex_position_buffer[v0_index];
+		tri[1] = scene->sentinel_local_space_vertex_position_buffer[v1_index];
+		tri[2] = scene->sentinel_local_space_vertex_position_buffer[v2_index];
+
+		const b32 intersects = lightray_ray_triangle_intersect(&transformed_plane_ray, tri, &out_t, &out_u, &out_v, LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_BACKFACE, &v0, &v1, &v2);
+
+		if (intersects)
+		{
+			SUNDER_LOG("\nintersects");
+			sunder_v3_t intersection_point = transformed_plane_ray.origin + transformed_plane_ray.direction * out_t;
+			intersection_point = sunder_v3_v4(plane_model * sunder_v4_v3(intersection_point, 1.0f));
+			scene->position_buffer[cube_entity_index] = intersection_point;
+
+			break;
+		}
+
+	}
+	*/
+
+	/*
+	for (u32 i = 0; i < scene->capsule_beyond_lower_clipping_plane_sentinel_index_count; i++)
+	{
+		if (SUNDER_IS_ANY_BIT_SET(capsule_hit_bitmask, i, 1ull) && SUNDER_IS_ANY_BIT_SET(plane_hit_bitmask, i, 1ull))
+		{
+			SUNDER_LOG("\n");
+			SUNDER_LOG(i);
+			hit_mapping_buffer[hit_mapping_buffer_iter] = i;
+			hit_mapping_buffer_iter++;
+		}
+	}
+
+	for (u32 i = 0; i < hit_mapping_buffer_iter; i++)
+	{
+		const u16 im = hit_mapping_buffer[i];
+		const f32 squared_distance = sunder_squared_distance_v3(plane_intersection_point_buffer[im], capsule_intersection_point_buffer[im]);
+
+		if (squared_distance < closest_squared_distance)
+		{
+			closest_squared_distance = squared_distance;
+			closest_ray_index = i;
+		}
+	}
+	*/
+
+	/*
+	const f32 projected_distance = sunder_distance_v3(plane_intersection_point_buffer[fim], capsule_intersection_point_buffer[fim]) - 0.00001f;
+
+	sunder_v3_t new_capsule_position = pre_raycast_capsule_position;
+	new_capsule_position.z -= projected_distance;;
+
+	while (SUNDER_TRUE)
+	{
+		sunder_m4_t model = sunder_m4_translation(pre_raycast_capsule_position);
+		lightray_compute_sentinel_world_space_vertex_positions_via_index_buffer(scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer, scene->sentinel_local_space_vertex_position_buffer + sentinel_local_space_vertex_position_buffer_offset, capsule_sentinel_world_space_vertex_position_buffer, scene->capsule_beyond_lower_clipping_plane_sentinel_index_count, new_capsule_model);
+
+		lightray_gjk_support_point_t simplex[4]{};
+		u32 simplex_size = 0;
+
+		const b32 intersects = lightray_gjk_intersect(capsule_sentinel_world_space_vertex_position_buffer, scene->capsule_beyond_lower_clipping_plane_sentinel_index_count, plane_world_space_vertex_position_buffer, plane_sentinel_vertex_count, simplex, &simplex_size);
+
+		if (intersects)
+		{
+			const lightray_epa_result_t epa_res = lightray_solve_epa(simplex, simplex_size, capsule_sentinel_world_space_vertex_position_buffer, scene->capsule_beyond_lower_clipping_plane_sentinel_index_count, plane_world_space_vertex_position_buffer, plane_sentinel_vertex_count);
+			const f32 delta = epa_res.depth + 0.006f;
+			new_capsule_position.z += delta;
+		}
+
+		else
+		{
+			break;
+		}
+	}
+	
+	*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	/*
+	u32 grid_cell_index_subarena_buffer_offset = 0;
+	u32 has_already_been_traced_bitmask_subarena = 0;
+	u32 raycast_pierce_layer_test_data_subarena_offset = 0;
+
+	lightray_reserve_raycast_memory(scene, projection_data->raycast_grid_cell_index_count, projection_data->raycast_pierce_layer_test_data_count, &grid_cell_index_subarena_buffer_offset, &has_already_been_traced_bitmask_subarena, &raycast_pierce_layer_test_data_subarena_offset);
+
+	//u32 collision_layer_index_buffer[2]{};
+	//collision_layer_index_buffer[0] = 1;
+	//collision_layer_index_buffer[1] = 2;
+
+	//lightray_raycast_pierce_layer_t pierce_layer{};
+	//pierce_layer.layer = 0;
+	//pierce_layer.threshold = 1;
+
+	u32 out_raycast_pierce_layer_data_count = 0;
+
+	lightray_raycast_data_t raycast_data{};
+	raycast_data.collision_layer_index_buffer = projection_data->collision_layer_index_buffer;
+	raycast_data.collision_layer_index_count = projection_data->collision_layer_index_count;
+	raycast_data.grid = grid;
+	raycast_data.collision_layer_bitmask = projection_data->collision_layer_bitmask; //(1ull << 1) | (1ull << 2);
+	raycast_data.cull_collision_layer_bitmask = projection_data->cull_collision_layer_bitmask;
+	raycast_data.has_already_been_traced_bitmask_subarena_offset = has_already_been_traced_bitmask_subarena;
+	raycast_data.raycast_grid_cell_index_subarena_offset = grid_cell_index_subarena_buffer_offset;
+	raycast_data.raycast_grid_cell_index_count = projection_data->raycast_grid_cell_index_count;
+	raycast_data.raycast_pierce_layer_test_data_subarena_offset = raycast_pierce_layer_test_data_subarena_offset;
+	raycast_data.raycast_pierce_layer_test_data_count = projection_data->raycast_pierce_layer_test_data_count;
+	raycast_data.pierce_layer_buffer = projection_data->pierce_layer_buffer;
+	raycast_data.pierce_layer_count = projection_data->pierce_layer_count;
+	raycast_data.ray.origin = projection_data->entry_ray_origin;
+	raycast_data.ray.direction = sunder_v3(0.0f, 0.0f, -1.0f);
+	raycast_data.ray.distance = projection_data->entry_ray_distance;
+	raycast_data.flags = projection_data->raycast_flags; //(1u << LIGHTRAY_RAYCAST_BITS_PIERCE_BIT) | (1u << LIGHTRAY_RAYCAST_BITS_TRACE_LINE_BIT) | (1u << LIGHTRAY_RAYCAST_BITS_MARK_INTERSECTION_POINT_BIT);
+	raycast_data.cube_entity_index = projection_data->cube_entity_index;
+	raycast_data.line_trace_entity_index = projection_data->line_trace_entity_index;
+	raycast_data.culling_mode = LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_NONE;
+
+	const b32 hit = lightray_vulkan_cast_ray(core, scene, &raycast_data, &out_raycast_pierce_layer_data_count);
+
+	if (out_raycast_pierce_layer_data_count > 1)
+	{
+		//SUNDER_LOG("\nhit: ");
+		//SUNDER_LOG(out_raycast_pierce_layer_data_count);
+
+		for (u32 i = 0; i < out_raycast_pierce_layer_data_count; i++)
+		{
+			//SUNDER_LOG("\nintersection point: ");
+			//sunder_log_v3(scene->pierce_layer_test_data_subarena[raycast_pierce_layer_test_data_subarena_offset + i].intersection_point);
+			//SUNDER_LOG("\ncai: ");
+			//SUNDER_LOG(scene->pierce_layer_test_data_subarena[raycast_pierce_layer_test_data_subarena_offset + i].collision_attribute_index);
+		}
+
+		f32 closest_squared_distance = FLT_MAX;
+		u32 closest_ray_index = 0;
+		u64 cluster_hit_bitmask_buffer_capsule[10]{};
+		u64 cluster_hit_bitmask_buffer_plane[10]{};
+		u16 hit_mapping_buffer[210]{};
+
+		const u32 capsule_collision_attribute_index = scene->pierce_layer_test_data_subarena[raycast_pierce_layer_test_data_subarena_offset].collision_attribute_index;
+		const u32 plane_collision_attribute_index = scene->pierce_layer_test_data_subarena[raycast_pierce_layer_test_data_subarena_offset + 1].collision_attribute_index;
+
+		const u32 capsule_collision_mesh_batch_index = scene->collision_attribute_buffer[capsule_collision_attribute_index].collision_mesh_batch_index;
+		const u32 plane_collision_mesh_batch_index = scene->collision_attribute_buffer[plane_collision_attribute_index].collision_mesh_batch_index;
+
+		const u32 capsule_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[capsule_collision_mesh_batch_index].collision_mesh_buffer_offset;
+		const u32 plane_collision_mesh_batch_buffer_offset = scene->collision_mesh_batch_buffer[plane_collision_mesh_batch_index].collision_mesh_buffer_offset;
+
+		const sunder_m4_t capsule_model = lightray_copy_glm_mat4_to_sunder(scene->collision_mesh_buffer[capsule_collision_mesh_buffer_offset].model->model);
+		const sunder_m4_t capsule_inverse = sunder_m4_inverse(capsule_model);
+		const u64 capsule_sentinel_vertex_count = scene->collision_mesh_buffer[capsule_collision_mesh_buffer_offset].sentinel_vertex_count;
+		const sunder_v3_t* capsule_local_space_vertex_position_buffer = scene->sentinel_local_space_vertex_position_buffer;
+		sunder_v3_t* capsule_world_space_vertex_position_buffer = scene->collision_mesh_buffer[capsule_collision_mesh_buffer_offset].sentinel_world_space_vertex_position_buffer;
+
+		sunder_v3_t capsule_position = projection_data->entry_ray_origin;
+
+		const sunder_m4_t plane_model = lightray_copy_glm_mat4_to_sunder(scene->collision_mesh_buffer[plane_collision_mesh_batch_buffer_offset].model->model);
+		const sunder_m4_t plane_inverse = sunder_m4_inverse(plane_model);
+		const u64 plane_sentinel_vertex_count = scene->collision_mesh_buffer[plane_collision_mesh_batch_buffer_offset].sentinel_vertex_count;
+		const sunder_v3_t* plane_local_space_vertex_position_buffer = scene->sentinel_local_space_vertex_position_buffer;
+		const sunder_v3_t* plane_world_space_vertex_position_buffer = scene->collision_mesh_buffer[plane_collision_mesh_batch_buffer_offset].sentinel_world_space_vertex_position_buffer;
+
+		//lightray_capsule_vertex_segments_t segments{};
+		//segments.v0v17 = v0v17;
+		//segments.v8v15 = v8v15;
+		//segments.v0v8 = v0v8;
+		//segments.v17v15 = v17v15;
+		//segments.v0v1 = v0v1;
+		//segments.v1v17 = v1v17;
+		//segments.v8v10 = v8v10;
+		//segments.v10v15 = v10v15;
+
+		lightray_capsule_to_plane_distance_computation_data_t data{};
+		data.segments = projection_data->segments;
+		data.capsule_vertex_count = capsule_sentinel_vertex_count;
+		data.capsule_local_space_vertex_position_buffer = capsule_local_space_vertex_position_buffer;
+		data.plane_local_space_vertex_position_buffer = plane_local_space_vertex_position_buffer;
+		data.capsule_model = &capsule_model;
+		data.capsule_inverse = &capsule_inverse;
+		data.ray_cluster_origin_buffer = projection_data->ray_cluster_origin_buffer;
+		data.lower_clipping_plane_vertex_index_buffer = projection_data->lower_clipping_plane_vertex_index_buffer;
+		data.ray_capsule_intersection_point_buffer = projection_data->ray_capsule_intersection_point_buffer;
+		data.ray_plane_intersection_point_buffer = projection_data->ray_plane_intersection_point_buffer;
+		data.plane_vertex_count = plane_sentinel_vertex_count;
+		data.plane_model = &plane_model;
+		data.plane_inverse = &plane_inverse;
+		data.capsule_hit_bitmask_buffer = cluster_hit_bitmask_buffer_capsule;
+		data.plane_hit_bitmask_buffer = cluster_hit_bitmask_buffer_plane;
+		data.hit_mapping_buffer = hit_mapping_buffer;
+		data.capsule_position = capsule_position;
+		data.cluster_direction = sunder_v3(0.0f, 0.0f, -1.0f);
+
+		const f32 plane_projection_distance = lightray_compute_capsule_to_plane_distance(&data);
+
+		capsule_position.z -= plane_projection_distance;
+		sunder_v3_t new_capsule_position = capsule_position;
+
+		u32 resolve_iteration_count = 0;
+
+		while (SUNDER_TRUE)
+		{
+			resolve_iteration_count++;
+			const sunder_m4_t new_capsule_model = sunder_m4_translation(new_capsule_position);
+
+			lightray_compute_sentinel_world_space_vertex_positions(capsule_local_space_vertex_position_buffer, capsule_world_space_vertex_position_buffer, (u32)capsule_sentinel_vertex_count, new_capsule_model);
+
+			lightray_gjk_support_point_t simplex[4]{};
+			u32 simplex_size = 0;
+			const b32 capsule_intersects = lightray_gjk_intersect(capsule_world_space_vertex_position_buffer, (u32)capsule_sentinel_vertex_count, plane_world_space_vertex_position_buffer, (u32)plane_sentinel_vertex_count, simplex, &simplex_size);
+
+			if (capsule_intersects)
+			{
+				//SUNDER_LOG("\nintersects:");
+				const lightray_epa_result_t epa_result = lightray_solve_epa(simplex, simplex_size, capsule_world_space_vertex_position_buffer, (u32)capsule_sentinel_vertex_count, plane_world_space_vertex_position_buffer, (u32)plane_sentinel_vertex_count);
+				const f32 delta = epa_result.depth + 0.006f;
+				//SUNDER_LOG("\ndelta: ");
+				//SUNDER_LOG(delta);
+
+				new_capsule_position.z += delta;
+			}
+
+			else
+			{
+				break;
+			}
+		}
+
+		f32 t = 0.1f;
+		f32 t_prev = 0.0f;
+		f32 step = 0.1f;
+
+		b32 capsule_does_intersect = SUNDER_FALSE;
+		*/
+		
+		/*
+		while (!capsule_does_intersect)
+		{
+			resolve_iteration_count++;
+
+			const sunder_v3_t new_pos = new_capsule_position - (sunder_v3(0.0f, 0.0f, 0.003f *  4.0f) * t);
+			const sunder_m4_t new_capsule_model = sunder_m4_translation(new_pos);
+
+			lightray_model_t new_capsule_lr_model{};
+			new_capsule_lr_model.model = lightray_copy_sunder_m4_to_glm(new_capsule_model);
+
+			lightray_compute_projected_vertex_positions(capsule_local_space_vertex_position_buffer, capsule_world_space_vertex_position_buffer, (u32)capsule_vertex_count, &new_capsule_lr_model);
+
+			lightray_gjk_support_point_t simplex[4]{};
+			u32 simplex_size = 0;
+			capsule_does_intersect = lightray_gjk_intersect(capsule_world_space_vertex_position_buffer, (u32)capsule_vertex_count, plane_world_space_vertex_position_buffer, (u32)plane_vertex_count, simplex, &simplex_size);
+
+			if (capsule_does_intersect)
+			{
+				break;
+			}
+
+			const f32 diff = 1.0f - t;
+
+			if (diff < step)
+			{
+				t_prev = t;
+				t += step;
+			}
+
+			else
+			{
+				t_prev = t;
+				t += step;
+			}
+		}
+
+		const sunder_v3_t final_capsule_position = new_capsule_position - (sunder_v3(0.0f, 0.0f, 0.003f * 4.0f) * t_prev);
+
+
+		*/
+
+		//return new_capsule_position;
+	//}
+
 }

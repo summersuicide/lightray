@@ -207,148 +207,68 @@ glm::vec3 lightray_get_camera_right(const glm::mat4& camera_view_matrix)
 	return glm::vec3(camera_view_matrix[0][0], camera_view_matrix[1][0], camera_view_matrix[2][0]);
 }
 
-b32 lightray_ray_triangle_intersect(const lightray_ray_t* ray, const sunder_v3_t* triangle_vertices, f32* out_t, f32* out_u, f32* out_v)
+b32 lightray_ray_triangle_intersect(const lightray_ray_t* ray, const sunder_v3_t* triangle_vertices, f32* out_t, f32* out_u, f32* out_v, lightray_ray_triangle_face_culling_mode_e culling_mode, sunder_v3_t* hit_v0, sunder_v3_t* hit_v1, sunder_v3_t* hit_v2)
 {
-	//const f64 EPSILON = 1e-8;
-
 	const sunder_v3_t ray_origin = sunder_v3(ray->origin.x, ray->origin.y, ray->origin.z);
 	const sunder_v3_t ray_direction = sunder_v3(ray->direction.x, ray->direction.y, ray->direction.z);
 
-	//sunder_v3_t AB = triangle_vertices[1] - triangle_vertices[0];
-	//sunder_v3_t AC = triangle_vertices[2] - triangle_vertices[0];
-	////glm::vec3 N = cross(AB, AC); // triangle normal, not gonna use for now
-
-	//sunder_v3_t AO = ray_origin - triangle_vertices[0];
-	//sunder_v3_t P = sunder_cross_v3(ray_direction, AC);
-	//f64 det = sunder_dot_v3(P, AB);
-
-	//// If determinant is near zero, ray lies in plane or is parallel
-	//if (fabs(det) < EPSILON)
-	//{
-	//	return SUNDER_FALSE;
-	//}
-
-	//f64 invDet = 1.0 / det;
-
-	const f64 EPSILON = 1e-8;
+	const f32 EPSILON = 1e-8f;
 
 	const sunder_v3_t AB = triangle_vertices[1] - triangle_vertices[0];
 	const sunder_v3_t AC = triangle_vertices[2] - triangle_vertices[0];
 	const sunder_v3_t P = sunder_cross_v3(ray_direction, AC);
 	const sunder_v3_t N = sunder_cross_v3(AB, AC);
 
-	const f64 det = sunder_dot_v3(AB, P);
+	const f32 det = sunder_dot_v3(AB, P);
 
 	if (fabs(det) < EPSILON)
 	{
 		return SUNDER_FALSE;
 	}
 
-	const f64 invDet = 1.0f / det;
+	const f32 invDet = 1.0f / det;
 
 	const sunder_v3_t T = ray_origin - triangle_vertices[0];
 
-	f64 u = sunder_dot_v3(T, P) * invDet;
-	if (u < 0.0 || u > 1.0) return SUNDER_FALSE;
+	const f32 u = sunder_dot_v3(T, P) * invDet;
+	if (u < 0.0f || u > 1.0f) return SUNDER_FALSE;
 
 	sunder_v3_t Q = sunder_cross_v3(T, AB);
-	f64 v = sunder_dot_v3(ray_direction, Q) * invDet;
-	if (v < 0.0 || u + v > 1.0) return SUNDER_FALSE;
+	const f32 v = sunder_dot_v3(ray_direction, Q) * invDet;
+	if (v < 0.0f || u + v > 1.0f) return SUNDER_FALSE;
 
-	f64 t = sunder_dot_v3(AC, Q) * invDet;
+	const f32 t = sunder_dot_v3(AC, Q) * invDet;
 
-	// Use t along **ray direction**
 	if (t < EPSILON) return SUNDER_FALSE;
 
 	const f32 normal_dot_ray = sunder_dot_v3(N, ray_direction);
 
-	if (normal_dot_ray > 0)
+	if (culling_mode == LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_BACKFACE)
 	{
-		return SUNDER_FALSE;
+		if (normal_dot_ray > 0)
+		{
+			return SUNDER_FALSE;
+		}
 	}
+
+	else if (culling_mode == LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_FRONTFACE)
+	{
+		if (normal_dot_ray < 0)
+		{
+			return SUNDER_FALSE;
+		}
+	}
+
+	*hit_v0 = triangle_vertices[0];
+	*hit_v1 = triangle_vertices[1];
+	*hit_v2 = triangle_vertices[2];
 
 	*out_t = (f32)t;
 	*out_u = (f32)u;
 	*out_v = (f32)v;
 
 	return SUNDER_TRUE;
-
-	/*
-	f64 u = sunder_dot_v3(P, AO) * invDet;
-
-	if (u < 0.0 || u > 1.0)
-	{
-		return SUNDER_FALSE;
-	}
-
-	sunder_v3_t Q = sunder_cross_v3(AO, AB);
-	f64 v = sunder_dot_v3(Q, ray_direction) * invDet;
-
-	if (v < 0.0 || u + v > 1.0)
-	{
-		return SUNDER_FALSE;
-	}
-
-	f64 t = sunder_dot_v3(Q, AC) * invDet;
-
-	if (t < EPSILON) // intersection behind origin
-	{
-		return SUNDER_FALSE;
-	}
-
-	*out_t = (f32)t;
-	*out_u = (f32)u;
-	*out_v = (f32)v;
-
-	if (t < 0.0f || t > ray->distance)
-	{
-		return SUNDER_FALSE;
-	}
-
-	return SUNDER_TRUE;
-	*/
 }
-
-/*
-lightray_buffer_index_query_result_t lightray_query_buffer_index(const u32* buffer, u32 starting_index, u32 ending_index, u32 val_at_index, bool reverse_logic)
-{
-	lightray_buffer_index_query_result_t res;
-
-	if (reverse_logic)
-	{
-		for (u32 i = starting_index; i < ending_index; i++)
-		{
-			if (buffer[i] != val_at_index)
-			{
-				res.value_at_index = buffer[i];
-				res.return_index = i;
-
-				return res;
-			}
-		}
-
-		return res;
-	}
-
-	else
-	{
-		for (u32 i = starting_index; i < ending_index; i++)
-		{
-			if (buffer[i] == val_at_index)
-			{
-				res.value_at_index = buffer[i];
-				res.return_index = i;
-
-				return res;
-			}
-		}
-
-		return res;
-	}
-
-	return res;
-}
-*/
 
 void lightray_compute_aabb_min_max(const sunder_v3_t& position, const sunder_v3_t& scale, sunder_v3_t* min, sunder_v3_t* max)
 {
@@ -356,6 +276,7 @@ void lightray_compute_aabb_min_max(const sunder_v3_t& position, const sunder_v3_
 	*min = position - converted_size;
 	*max = position + converted_size;
 }
+
 
 b32 lightray_aabbs_intersect(const sunder_v3_t& position_a, const sunder_v3_t& scale_a, const sunder_v3_t& position_b, const sunder_v3_t& scale_b)
 {
@@ -392,12 +313,25 @@ void lightray_get_raw_vertex_positions(u32 index_buffer_offset, u32 index_count,
 	}
 }
 
-void lightray_compute_projected_vertex_positions(const sunder_v3_t* raw_vertex_positions, sunder_v3_t* projected_vertex_positions, u32 vertex_count, const lightray_model_t* model)
+void lightray_compute_sentinel_world_space_vertex_positions(const sunder_v3_t* sentinel_local_space_vertex_position_buffer, sunder_v3_t* sentinel_world_space_vertex_position_buffer, u32 sentinel_vertex_count, const sunder_m4_t& m)
 {
-	for (u64 i = 0; i < vertex_count; i++)
+	for (u32 i = 0; i < sentinel_vertex_count; i++)
 	{
-		const glm::vec3 v = model->model * glm::vec4(glm::vec3(raw_vertex_positions[i].x, raw_vertex_positions[i].y, raw_vertex_positions[i].z), 1.0f);
-		projected_vertex_positions[i] = sunder_v3(v.x, v.y, v.z);
+		sentinel_world_space_vertex_position_buffer[i] = sunder_v3_v4(m * sunder_v4_v3(sentinel_local_space_vertex_position_buffer[i], 1.0f));
+
+		//const glm::vec3 v = model->model * glm::vec4(glm::vec3(raw_vertex_positions[i].x, raw_vertex_positions[i].y, raw_vertex_positions[i].z), 1.0f);
+		//projected_vertex_positions[i] = sunder_v3(v.x, v.y, v.z);
+	}
+}
+
+void lightray_compute_sentinel_world_space_vertex_positions_via_index_buffer(const u32* sentinel_index_buffer, const sunder_v3_t* sentinel_local_space_vertex_position_buffer, sunder_v3_t* sentinel_world_space_vertex_position_buffer, u32 sentinel_vertex_count, const sunder_m4_t& m)
+{
+	for (u32 v = 0; v < sentinel_vertex_count; v++)
+	{
+		const u32 vertex_index = sentinel_index_buffer[v];
+		const sunder_v3_t vertex_position = sentinel_local_space_vertex_position_buffer[vertex_index];
+
+		sentinel_world_space_vertex_position_buffer[v] = sunder_v3_v4(m * sunder_v4_v3(vertex_position, 1.0f));
 	}
 }
 
@@ -420,9 +354,17 @@ sunder_v3_t lightray_gjk_find_furthest_point(const sunder_v3_t* tri, u32 vertex_
 	return max_point;
 }
 
-sunder_v3_t lightray_gjk_support(const sunder_v3_t* vertex_positions1, u32 vertex_count1, const sunder_v3_t* vertex_positions2, u32 vertex_count2, const sunder_v3_t& direction)
+lightray_gjk_support_point_t lightray_gjk_support(const sunder_v3_t* vertex_positions1, u32 vertex_count1, const sunder_v3_t* vertex_positions2, u32 vertex_count2, const sunder_v3_t& direction)
 {
-	return lightray_gjk_find_furthest_point(vertex_positions1, vertex_count1, direction) - lightray_gjk_find_furthest_point(vertex_positions2, vertex_count2, -direction);
+	const sunder_v3_t a = lightray_gjk_find_furthest_point(vertex_positions1, vertex_count1, direction);
+	const sunder_v3_t b = lightray_gjk_find_furthest_point(vertex_positions2, vertex_count2, -direction);
+
+	lightray_gjk_support_point_t support_point{};
+	support_point.a = a;
+	support_point.b = b;
+	support_point.p = a - b;
+
+	return support_point;
 }
 
 b32 lightray_gjk_same_direction(const sunder_v3_t& direction, sunder_v3_t& ao)
@@ -430,21 +372,31 @@ b32 lightray_gjk_same_direction(const sunder_v3_t& direction, sunder_v3_t& ao)
 	return sunder_dot_v3(direction, ao) > 0;
 }
 
-b32 lightray_gjk_line(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction)
+b32 lightray_gjk_line(lightray_gjk_support_point_t* simplex, u32* simplex_size, sunder_v3_t* direction)
 {
-	sunder_v3_t a = simplex[0];
-	sunder_v3_t b = simplex[1];
+	const f32 EPSILON = 1e-12f;
+
+	sunder_v3_t a = simplex[0].p;
+	sunder_v3_t b = simplex[1].p;
 	sunder_v3_t ab = b - a;
 	sunder_v3_t ao = -a;
+
+	// Check degenerate
+	if (sunder_squared_magnitude_v3(ab) < EPSILON)
+	{
+		*direction = ao;
+		return SUNDER_FALSE;
+	}
 
 	if (lightray_gjk_same_direction(ab, ao))
 	{
 		*direction = sunder_cross_v3(sunder_cross_v3(ab, ao), ab);
+		if (sunder_squared_magnitude_v3(*direction) < EPSILON) *direction = ao;
 	}
-
 	else
 	{
-		simplex[0] = a;
+		// Keep only A
+		simplex[0] = simplex[0];
 		*simplex_size = 1;
 		*direction = ao;
 	}
@@ -452,11 +404,15 @@ b32 lightray_gjk_line(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* dire
 	return SUNDER_FALSE;
 }
 
-b32 lightray_gjk_triangle(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction)
+b32 lightray_gjk_triangle(lightray_gjk_support_point_t* simplex, u32* simplex_size, sunder_v3_t* direction)
 {
-	sunder_v3_t a = simplex[0];
-	sunder_v3_t b = simplex[1];
-	sunder_v3_t c = simplex[2];
+
+
+	const f32 EPSILON = 1e-12f;
+
+	sunder_v3_t a = simplex[0].p;
+	sunder_v3_t b = simplex[1].p;
+	sunder_v3_t c = simplex[2].p;
 
 	sunder_v3_t ab = b - a;
 	sunder_v3_t ac = c - a;
@@ -464,112 +420,105 @@ b32 lightray_gjk_triangle(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* 
 
 	sunder_v3_t abc = sunder_cross_v3(ab, ac);
 
-	if (lightray_gjk_same_direction(sunder_cross_v3(abc, ac), ao))
+	// Check if origin is in AC region
+	sunder_v3_t ac_perp = sunder_cross_v3(abc, ac);
+	if (lightray_gjk_same_direction(ac_perp, ao))
 	{
 		if (lightray_gjk_same_direction(ac, ao))
 		{
-			simplex[0] = a;
-			simplex[1] = c;
+			// Keep A and C
+			simplex[1] = simplex[2];
 			*simplex_size = 2;
-
 			*direction = sunder_cross_v3(sunder_cross_v3(ac, ao), ac);
+			if (sunder_squared_magnitude_v3(*direction) < EPSILON) *direction = ao;
 		}
-
 		else
 		{
-			simplex[0] = a;
-			simplex[1] = b;
+			// Reduce to line AB
+			simplex[1] = simplex[1];
 			*simplex_size = 2;
-
 			return lightray_gjk_line(simplex, simplex_size, direction);
 		}
+		return SUNDER_FALSE;
 	}
 
+	// Check if origin is in AB region
+	sunder_v3_t ab_perp = sunder_cross_v3(ab, abc);
+	if (lightray_gjk_same_direction(ab_perp, ao))
+	{
+		// Reduce to line AB
+		*simplex_size = 2;
+		return lightray_gjk_line(simplex, simplex_size, direction);
+	}
+
+	// Origin is above or below triangle
+	if (lightray_gjk_same_direction(abc, ao))
+	{
+		*direction = abc;
+	}
 	else
 	{
-		if (lightray_gjk_same_direction(sunder_cross_v3(ab, abc), ao))
-		{
-			simplex[0] = a;
-			simplex[1] = b;
-			*simplex_size = 2;
-
-			return lightray_gjk_line(simplex, simplex_size, direction);
-		}
-
-		else
-		{
-			if (lightray_gjk_same_direction(abc, ao))
-			{
-				*direction = abc;
-			}
-
-			else
-			{
-				simplex[0] = a;
-				simplex[1] = c;
-				simplex[2] = b;
-				*simplex_size = 3;
-				*direction = -abc;
-			}
-		}
+		*direction = -abc;
+		// Swap B and C
+		lightray_gjk_support_point_t temp = simplex[1];
+		simplex[1] = simplex[2];
+		simplex[2] = temp;
 	}
+
+	if (sunder_squared_magnitude_v3(*direction) < EPSILON) *direction = ao;
 
 	return SUNDER_FALSE;
 }
 
-b32 lightray_gjk_tetrahedron(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction)
+b32 lightray_gjk_tetrahedron(lightray_gjk_support_point_t* simplex, u32* simplex_size, sunder_v3_t* direction)
 {
-	sunder_v3_t a = simplex[0];
-	sunder_v3_t b = simplex[1];
-	sunder_v3_t c = simplex[2];
-	sunder_v3_t d = simplex[3];
+
+
+	sunder_v3_t a = simplex[0].p;
+	sunder_v3_t b = simplex[1].p;
+	sunder_v3_t c = simplex[2].p;
+	sunder_v3_t d = simplex[3].p;
+
+	sunder_v3_t ao = -a;
 
 	sunder_v3_t ab = b - a;
 	sunder_v3_t ac = c - a;
 	sunder_v3_t ad = d - a;
-	sunder_v3_t ao = -a;
 
 	sunder_v3_t abc = sunder_cross_v3(ab, ac);
 	sunder_v3_t acd = sunder_cross_v3(ac, ad);
 	sunder_v3_t adb = sunder_cross_v3(ad, ab);
 
+	// Check each face
 	if (lightray_gjk_same_direction(abc, ao))
 	{
-		simplex[0] = a;
-		simplex[1] = b;
-		simplex[2] = c;
-
+		// Reduce to triangle ABC
+		simplex[3] = simplex[2]; // discard D
 		*simplex_size = 3;
-
 		return lightray_gjk_triangle(simplex, simplex_size, direction);
 	}
-
 	if (lightray_gjk_same_direction(acd, ao))
 	{
-		simplex[0] = a;
-		simplex[1] = c;
-		simplex[2] = d;
-
+		// Reduce to triangle ACD
+		simplex[1] = simplex[2];
+		simplex[2] = simplex[3];
 		*simplex_size = 3;
-
 		return lightray_gjk_triangle(simplex, simplex_size, direction);
 	}
-
 	if (lightray_gjk_same_direction(adb, ao))
 	{
-		simplex[0] = a;
-		simplex[1] = d;
-		simplex[2] = b;
-
+		// Reduce to triangle ADB
+		simplex[2] = simplex[1];
+		simplex[1] = simplex[3];
 		*simplex_size = 3;
-
 		return lightray_gjk_triangle(simplex, simplex_size, direction);
 	}
 
+	// Origin is inside tetrahedron
 	return SUNDER_TRUE;
 }
 
-b32 lightray_gjk_next_simplex(sunder_v3_t* simplex, u32* simplex_size, sunder_v3_t* direction)
+b32 lightray_gjk_next_simplex(lightray_gjk_support_point_t* simplex, u32* simplex_size, sunder_v3_t* direction)
 {
 	switch (*simplex_size)
 	{
@@ -584,21 +533,30 @@ b32 lightray_gjk_next_simplex(sunder_v3_t* simplex, u32* simplex_size, sunder_v3
 	return SUNDER_FALSE;
 }
 
-b32 lightray_gjk_intersect(const sunder_v3_t* vertex_positions1, u32 vertex_count1, const sunder_v3_t* vertex_positions2, u32 vertex_count2)
+b32 lightray_gjk_intersect(const sunder_v3_t* vertex_positions1, u32 vertex_count1, const sunder_v3_t* vertex_positions2, u32 vertex_count2, lightray_gjk_support_point_t* out_simplex, u32* out_simplex_size)
 {
-	sunder_v3_t support = lightray_gjk_support(vertex_positions1, vertex_count1, vertex_positions2, vertex_count2, sunder_v3(1.0f, 0.0f, 0.0f));
+	u32 iteration_count = 0;
+	lightray_gjk_support_point_t support = lightray_gjk_support(vertex_positions1, vertex_count1, vertex_positions2, vertex_count2, sunder_v3(1.0f, 0.0f, 0.0f));
 
-	sunder_v3_t simplex[4]{};
+	lightray_gjk_support_point_t simplex[4]{};
 	u32 simplex_size = 1;
 	simplex[0] = support;
 
-	sunder_v3_t direction = -support;
+	sunder_v3_t direction = -support.p;
 
-	while (true)
+	while (SUNDER_TRUE)
 	{
+		iteration_count++;
+
+		if (iteration_count > 50)
+		{
+			SUNDER_LOG("\n\nITERATION COUNT EXCEEDED, INFINITE LOOP TERMINATED");
+			return SUNDER_FALSE;
+		}
+
 		support = lightray_gjk_support(vertex_positions1, vertex_count1, vertex_positions2, vertex_count2, direction);
 
-		if (sunder_dot_v3(support, direction) <= 0)
+		if (sunder_dot_v3(support.p, direction) <= 0)
 		{
 			return SUNDER_FALSE;
 		}
@@ -612,10 +570,404 @@ b32 lightray_gjk_intersect(const sunder_v3_t* vertex_positions1, u32 vertex_coun
 
 		if (lightray_gjk_next_simplex(simplex, &simplex_size, &direction))
 		{
+			*out_simplex_size = simplex_size;
+
+			for (u32 i = 0; i < simplex_size; i++)
+			{
+				out_simplex[i] = simplex[i];
+			}
+
 			return SUNDER_TRUE;
 		}
+
+
+		// Prevent degenerate direction
+		if (sunder_squared_magnitude_v3(direction) < 1e-12f)
+			return SUNDER_TRUE;
 	};
 }
+
+void lightray_gjk_compute_closest_point(lightray_gjk_support_point_t* simplex, u32 simplex_size, sunder_v3_t* closest, f32* bary)
+{
+	if (simplex_size == 1)
+	{
+		*closest = simplex[0].p;
+		bary[0] = 1.0f;
+		return;
+	}
+
+	if (simplex_size == 2)
+	{
+		// Segment AB
+		sunder_v3_t A = simplex[0].p;
+		sunder_v3_t B = simplex[1].p;
+
+		sunder_v3_t AB = B - A;
+		sunder_v3_t AO = -A;
+
+		float t = sunder_dot_v3(AO, AB);
+
+		if (t <= 0)
+		{
+			*closest = A;
+			bary[0] = 1.0f;
+			bary[1] = 0.0f;
+			return;
+		}
+
+		float denom = sunder_dot_v3(AB, AB);
+
+		if (t >= denom)
+		{
+			*closest = B;
+			bary[0] = 0.0f;
+			bary[1] = 1.0f;
+			return;
+		}
+
+		t /= denom;
+
+		*closest = A + AB * t;
+		bary[0] = 1.0f - t;
+		bary[1] = t;
+		return;
+	}
+
+	if (simplex_size == 3)
+	{
+		// Triangle ABC
+		sunder_v3_t A = simplex[0].p;
+		sunder_v3_t B = simplex[1].p;
+		sunder_v3_t C = simplex[2].p;
+
+		sunder_v3_t AB = B - A;
+		sunder_v3_t AC = C - A;
+		sunder_v3_t AO = -A;
+
+		// Normal of triangle
+		sunder_v3_t ABCn = sunder_cross_v3(AB, AC);
+
+		// Check vertex A region
+		sunder_v3_t ABn = sunder_cross_v3(AB, ABCn);
+		if (sunder_dot_v3(ABn, AO) > 0)
+		{
+			// Remove C -> segment AB
+			simplex[2] = simplex[1];
+			simplex[1] = simplex[0];
+			return lightray_gjk_compute_closest_point(simplex, 2, closest, bary);
+		}
+
+		sunder_v3_t ACn = sunder_cross_v3(ABCn, AC);
+		if (sunder_dot_v3(ACn, AO) > 0)
+		{
+			// Remove B -> segment AC
+			simplex[1] = simplex[2];
+			return lightray_gjk_compute_closest_point(simplex, 2, closest, bary);
+		}
+
+		// Inside triangle; compute barycentric normally
+		float d00 = sunder_dot_v3(AB, AB);
+		float d01 = sunder_dot_v3(AB, AC);
+		float d11 = sunder_dot_v3(AC, AC);
+		float d20 = sunder_dot_v3(AO, AB);
+		float d21 = sunder_dot_v3(AO, AC);
+
+		float denom = d00 * d11 - d01 * d01;
+		float v = (d11 * d20 - d01 * d21) / denom;
+		float w = (d00 * d21 - d01 * d20) / denom;
+		float u = 1.0f - v - w;
+
+		*closest = A * u + B * v + C * w;
+
+		bary[0] = u;
+		bary[1] = v;
+		bary[2] = w;
+		return;
+	}
+}
+
+lightray_gjk_closest_hit_t lightray_gjk_distance(const sunder_v3_t* vertices_a, u32 vertex_count_a, const sunder_v3_t* vertices_b, u32 vertex_count_b, const sunder_v3_t& search_direction)
+{
+	/*
+	lightray_gjk_closest_hit_t result{};
+	result.valid = false;
+
+	lightray_gjk_support_point_t simplex[4];
+	u32 simplex_size = 0;
+
+	sunder_v3_t direction = sunder_v3(1.0f, 0.0f, 0.0f); // any non-zero
+
+	// First support
+	simplex[0] = lightray_gjk_support(vertices_a, vertex_count_a, vertices_b, vertex_count_b, direction);
+	simplex_size = 1;
+
+	direction = -simplex[0].p;
+
+	const u32 max_iter = 32;
+	for (u32 iter = 0; iter < max_iter; iter++)
+	{
+		// New support point in current direction
+		lightray_gjk_support_point_t newP =
+			lightray_gjk_support(vertices_a, vertex_count_a, vertices_b, vertex_count_b, direction);
+
+		// If no progress → we are at closest features
+		f32 proj = sunder_dot_v3(newP.p, direction);
+		f32 dist2 = sunder_dot_v3(direction, direction);
+
+		if (proj - dist2 < 1e-6f)
+			break;
+
+		// Add to simplex
+		simplex[simplex_size++] = newP;
+
+		// Compute closest point to origin inside this simplex
+		sunder_v3_t closest;
+		f32 bary[4] = { 0 };
+
+		lightray_gjk_compute_closest_point(simplex, simplex_size, &closest, bary);
+
+		// Set new direction toward origin
+		direction = -closest;
+
+		// If origin reached → distance = 0
+		if (sunder_dot_v3(direction, direction) < 1e-12f)
+		{
+			// Reconstruct closestA and closestB at origin
+			sunder_v3_t cA = sunder_v3(0, 0, 0);
+			sunder_v3_t cB = sunder_v3(0, 0, 0);
+
+			for (u32 i = 0; i < simplex_size; i++)
+			{
+				cA += simplex[i].a * bary[i];
+				cB += simplex[i].b * bary[i];
+			}
+
+			result.closest_a = cA;
+			result.closest_b = cB;
+			result.distance = 0.0f;
+			result.valid = SUNDER_TRUE;
+			return result;
+		}
+	}
+
+	// Compute final closest point
+	sunder_v3_t closest;
+	f32 bary[4] = { 0 };
+	lightray_gjk_compute_closest_point(simplex, simplex_size, &closest, bary);
+
+	sunder_v3_t cA = sunder_v3(0, 0, 0);
+	sunder_v3_t cB = sunder_v3(0, 0, 0);
+
+	for (u32 i = 0; i < simplex_size; i++)
+	{
+		cA += simplex[i].a * bary[i];
+		cB += simplex[i].b * bary[i];
+	}
+
+	result.closest_a = cA;
+	result.closest_b = cB;
+	result.distance = sunder_magnitude_v3(cB - cA);
+	result.valid = SUNDER_TRUE;
+
+	sunder_v3_t world_sep = result.closest_b - result.closest_a;
+
+	if (sunder_dot_v3(world_sep, world_sep) > 1e-12f)
+	{
+		result.normal = sunder_normalize_v3(world_sep);
+	}
+	else
+	{
+		// intersection case: fallback to last GJK direction
+		result.normal = sunder_normalize_v3(direction);
+	}
+
+	return result;
+
+	*/
+
+
+
+	/*
+
+	lightray_gjk_closest_hit_t result{};
+	result.valid = false;
+
+	lightray_gjk_support_point_t simplex[4];
+	u32 simplex_size = 0;
+
+	sunder_v3_t direction = search_direction; // any non-zero
+
+	// First support
+	simplex[0] = lightray_gjk_support(vertices_a, vertex_count_a, vertices_b, vertex_count_b, direction);
+	simplex_size = 1;
+
+	direction = -simplex[0].p;
+
+	const u32 max_iter = 32;
+	for (u32 iter = 0; iter < max_iter; iter++)
+	{
+		// New support point in current direction
+		lightray_gjk_support_point_t newP =
+			lightray_gjk_support(vertices_a, vertex_count_a, vertices_b, vertex_count_b, direction);
+
+		// If no progress → we are at closest features
+		f32 proj = sunder_dot_v3(newP.p, direction);
+		f32 dist2 = sunder_dot_v3(direction, direction);
+
+		if (proj - dist2 < 1e-6f)
+			break;
+
+		// Add to simplex
+		simplex[simplex_size++] = newP;
+
+		// Compute closest point to origin inside this simplex
+		sunder_v3_t closest;
+		f32 bary[4] = { 0 };
+
+		lightray_gjk_compute_closest_point(simplex, simplex_size, &closest, bary);
+
+		// Set new direction toward origin
+		direction = -closest;
+
+		// If origin reached → distance = 0
+		if (sunder_dot_v3(direction, direction) < 1e-12f)
+		{
+			// Reconstruct closest points at origin (intersection detected)
+			sunder_v3_t cA = sunder_v3(0, 0, 0);
+			sunder_v3_t cB = sunder_v3(0, 0, 0);
+			for (u32 i = 0; i < simplex_size; i++)
+			{
+				cA += simplex[i].a * bary[i];
+				cB += simplex[i].b * bary[i];
+			}
+
+			result.closest_a = cA;
+			result.closest_b = cB;
+			result.distance = 0.0f;  // intersection detected
+			result.valid = SUNDER_TRUE;
+			return result;  // Return immediately as the shapes are intersecting
+		}
+	}
+
+	// Compute final closest point (if no intersection was found)
+	sunder_v3_t closest;
+	f32 bary[4] = { 0 };
+	lightray_gjk_compute_closest_point(simplex, simplex_size, &closest, bary);
+
+	sunder_v3_t cA = sunder_v3(0, 0, 0);
+	sunder_v3_t cB = sunder_v3(0, 0, 0);
+
+	for (u32 i = 0; i < simplex_size; i++)
+	{
+		cA += simplex[i].a * bary[i];
+		cB += simplex[i].b * bary[i];
+	}
+
+	result.closest_a = cA;
+	result.closest_b = cB;
+	result.distance = sunder_magnitude_v3(cB - cA);
+	result.valid = SUNDER_TRUE;
+
+	sunder_v3_t world_sep = result.closest_b - result.closest_a;
+
+	if (sunder_dot_v3(world_sep, world_sep) > 1e-12f)
+	{
+		result.normal = sunder_normalize_v3(world_sep);
+	}
+	else
+	{
+		// Intersection case: fallback to last GJK direction
+		result.normal = sunder_normalize_v3(direction);
+	}
+
+	return result;
+	*/
+
+
+lightray_gjk_closest_hit_t result{};
+result.valid = false;
+
+lightray_gjk_support_point_t simplex[4];
+u32 simplex_size = 0;
+
+sunder_v3_t direction = sunder_v3(1.0f, 0.0f, 0.0f);  // any non-zero direction
+
+// First support point
+simplex[0] = lightray_gjk_support(vertices_a, vertex_count_a, vertices_b, vertex_count_b, direction);
+simplex_size = 1;
+
+direction = -simplex[0].p;  // Refine the search direction
+
+const u32 max_iter = 32;
+for (u32 iter = 0; iter < max_iter; iter++)
+{
+	// Get new support point in the current direction
+	lightray_gjk_support_point_t newP =
+		lightray_gjk_support(vertices_a, vertex_count_a, vertices_b, vertex_count_b, direction);
+
+	// Check for minimal progress
+	f32 proj = sunder_dot_v3(newP.p, direction);
+	f32 dist2 = sunder_dot_v3(direction, direction);
+
+	// If no progress in direction, break (converged)
+	if (proj - dist2 < 1e-6f)
+		break;
+
+	// Add the new point to the simplex
+	simplex[simplex_size++] = newP;
+
+	// Compute the closest point on the simplex
+	sunder_v3_t closest;
+	f32 bary[4] = { 0 };
+	lightray_gjk_compute_closest_point(simplex, simplex_size, &closest, bary);
+
+	// Update the direction
+	direction = -closest;
+
+	// If direction is very small, we've found the closest points
+	if (sunder_dot_v3(direction, direction) < 1e-12f)
+	{
+		// Reconstruct the closest points on both objects
+		sunder_v3_t cA = sunder_v3(0, 0, 0);
+		sunder_v3_t cB = sunder_v3(0, 0, 0);
+
+		for (u32 i = 0; i < simplex_size; i++)
+		{
+			cA += simplex[i].a * bary[i];
+			cB += simplex[i].b * bary[i];
+		}
+
+		result.closest_a = cA;
+		result.closest_b = cB;
+		result.distance = sunder_magnitude_v3(cB - cA);  // Minimal distance
+		result.valid = SUNDER_TRUE;
+		return result;
+	}
+}
+
+// Final closest point if no intersection detected
+sunder_v3_t closest;
+f32 bary[4] = { 0 };
+lightray_gjk_compute_closest_point(simplex, simplex_size, &closest, bary);
+
+sunder_v3_t cA = sunder_v3(0, 0, 0);
+sunder_v3_t cB = sunder_v3(0, 0, 0);
+
+for (u32 i = 0; i < simplex_size; i++)
+{
+	cA += simplex[i].a * bary[i];
+	cB += simplex[i].b * bary[i];
+}
+
+result.closest_a = cA;
+result.closest_b = cB;
+result.distance = sunder_magnitude_v3(cB - cA);  // Final distance
+result.valid = SUNDER_TRUE;
+
+return result;
+
+}
+
 
 glm::mat4 lightray_assimp_to_glm_mat4(const aiMatrix4x4& mat)
 {
@@ -718,6 +1070,21 @@ void lightray_suballocate_scene(lightray_scene_t* scene, const lightray_scene_su
 
 	scene->total_pierce_layer_test_data_count = suballocation_data->total_raycast_pierce_layer_test_data_count;
 
+	scene->total_chained_entity_count = suballocation_data->total_entity_count;
+	scene->total_entity_binding_chain_count = suballocation_data->total_entity_count / 2;
+	scene->total_binding_chain_index_count = suballocation_data->total_entity_count;
+	scene->total_has_already_assembled_transform_matrix_bitmask_count = SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count);
+	scene->has_already_assembled_transform_matrix_bitmask_per_entity_count = SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count);
+	scene->total_chained_entity_transform_matrix_count = suballocation_data->total_entity_count;
+	scene->total_already_part_of_other_binding_chain_bitmask_count = SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count);
+	scene->already_part_of_other_binding_chain_bitmask_count_for_total_entity_count = SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count);
+	scene->total_entity_children_index_count = suballocation_data->total_entity_count * suballocation_data->entity_children_index_per_entity_count;
+	scene->entity_children_index_per_entity_count = suballocation_data->entity_children_index_per_entity_count;
+	scene->total_binding_chain_depth_count = suballocation_data->total_entity_count;
+	scene->total_has_already_written_into_binding_chain_bitmask_count = SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count);
+	scene->has_already_written_into_binding_chain_bitmask_count_for_total_entity_count = SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count);
+	
+
 	const sunder_arena_suballocation_result_t entity_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_entity_t), scene->total_entity_count), alignof(lightray_entity_t));
 	scene->entity_buffer = (lightray_entity_t*)entity_buffer_suballocation_result.data;
 
@@ -731,7 +1098,7 @@ void lightray_suballocate_scene(lightray_scene_t* scene, const lightray_scene_su
 	scene->scale_buffer = (sunder_v3_t*)scale_buffer_suballocation_result.data;
 
 	const sunder_arena_suballocation_result_t mesh_binding_offsets_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_mesh_binding_offsets_t), scene->total_mesh_count), alignof(lightray_mesh_binding_offsets_t));
-	scene->mesh_binding_offsets= (lightray_mesh_binding_offsets_t*)mesh_binding_offsets_suballocation_result.data;
+	scene->mesh_binding_offsets = (lightray_mesh_binding_offsets_t*)mesh_binding_offsets_suballocation_result.data;
 
 	const sunder_arena_suballocation_result_t mesh_binding_buffer_suballocation_result = sunder_suballocate_from_arena(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_mesh_binding_t), scene->total_instance_model_count), alignof(lightray_mesh_binding_t));
 	scene->mesh_binding_buffer = (lightray_mesh_binding_t*)mesh_binding_buffer_suballocation_result.data;
@@ -773,21 +1140,64 @@ void lightray_suballocate_scene(lightray_scene_t* scene, const lightray_scene_su
 	const sunder_arena_suballocation_result_t quat_rotation_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(sunder_quat_t), scene->total_entity_count), alignof(sunder_quat_t));
 	scene->quat_rotation_buffer = SUNDER_CAST(sunder_quat_t*, quat_rotation_buffer_suballocation_result.data);
 
+
+	const sunder_arena_suballocation_result_t chained_entity_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(u32), scene->total_chained_entity_count), alignof(u32));
+	scene->chained_entity_index_buffer = SUNDER_CAST(u32*, chained_entity_index_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t entity_binding_chain_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_entity_binding_chain_t), scene->total_entity_binding_chain_count), alignof(lightray_entity_binding_chain_t));
+	scene->entity_binding_chain_buffer = SUNDER_CAST(lightray_entity_binding_chain_t*, entity_binding_chain_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t entity_binding_chain_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(u32), scene->total_binding_chain_index_count), alignof(u32));
+	scene->entity_binding_chain_index_buffer = SUNDER_CAST(u32*, entity_binding_chain_index_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t has_already_assembled_transform_matrix_bitmask_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(u64), scene->total_has_already_assembled_transform_matrix_bitmask_count), alignof(u64));
+	scene->has_already_assembled_transform_matrix_bitmask_buffer = SUNDER_CAST(u64*, has_already_assembled_transform_matrix_bitmask_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t chained_entity_transform_matrix_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(sunder_m4_t), scene->total_chained_entity_transform_matrix_count), alignof(sunder_m4_t));
+	scene->chained_entity_transform_matrix_buffer = SUNDER_CAST(sunder_m4_t*, chained_entity_transform_matrix_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t already_part_of_other_binding_chain_bitmask_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(u64), scene->total_already_part_of_other_binding_chain_bitmask_count), alignof(u64));
+	scene->already_part_of_other_binding_chain_bitmask_buffer = SUNDER_CAST(u64*, already_part_of_other_binding_chain_bitmask_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t entity_children_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(u32), scene->total_entity_children_index_count), alignof(u32));
+	scene->entity_children_index_buffer= SUNDER_CAST(u32*, entity_children_index_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t binding_chain_depth_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(u32), scene->total_binding_chain_depth_count), alignof(u32));
+	scene->binding_chain_depth_buffer = SUNDER_CAST(u32*, binding_chain_depth_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t has_already_written_into_binding_chain_bitmask_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(u64), scene->total_has_already_written_into_binding_chain_bitmask_count), alignof(u64));
+	scene->has_already_written_into_binding_chain_bitmask_buffer = SUNDER_CAST(u64*, has_already_written_into_binding_chain_bitmask_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t closest_epa_result_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(lightray_epa_result_t), scene->total_collidable_entity_count), alignof(lightray_epa_result_t));
+	scene->closest_epa_result_buffer = SUNDER_CAST(lightray_epa_result_t*, closest_epa_result_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t temp_squared_distance_buffer_suballocation_result = sunder_suballocate_from_arena_debug(suballocation_data->arena, sunder_compute_array_size_in_bytes(sizeof(f32), scene->total_collidable_entity_count), alignof(f32));
+	scene->temp_contact_point_squared_distance_buffer = SUNDER_CAST(f32*, temp_squared_distance_buffer_suballocation_result.data);
+
+
 	for (u32 i = 0; i < scene->total_entity_count; i++)
 	{
+		scene->entity_buffer[i].global_mesh_index = UINT16_MAX;
+		scene->entity_buffer[i].light_attribute_index = UINT16_MAX;
+		scene->entity_buffer[i].camera_attribute_index = UINT16_MAX;
+		scene->entity_buffer[i].parent_index = UINT32_MAX;
+		scene->entity_buffer[i].instance_model_binding_index = UINT32_MAX;
+		scene->entity_buffer[i].collision_attribute_index = UINT32_MAX;
+		scene->entity_buffer[i].bone_binding_index = UINT32_MAX;
 		scene->scale_buffer[i] = sunder_v3_scalar(1.0f);
+
+		lightray_add_entity_flags(scene, i, (1 << LIGHTRAY_ENTITY_BITS_INHERIT_ENTITY_BINDING_CHAIN_TRANSLATION_BIT) | (1 << LIGHTRAY_ENTITY_BITS_INHERIT_ENTITY_BINDING_CHAIN_ROTATION_BIT) | (1 << LIGHTRAY_ENTITY_BITS_INHERIT_ENTITY_BINDING_CHAIN_SCALE_BIT));
+	}
+
+	for (u32 i = 0; i < scene->total_collidable_entity_count; i++)
+	{
+		scene->temp_contact_point_squared_distance_buffer[i] = FLT_MAX;
 	}
 
 	for (u32 i = 0; i < scene->total_entity_count; i++)
 	{
 		SUNDER_SET_BIT(scene->visibility_flags, i, 1ull);
 	}
-
-	for (u32 i = 0; i < scene->total_instance_model_count; i++)
-	{
-		scene->mesh_binding_buffer[i].bone_node_mapping_index = UINT32_MAX;
-	}
-
 }
 
 u64 lightray_compute_scene_suballocation_size(const lightray_scene_suballocation_data_t* suballocation_data, u64 alignment)
@@ -812,10 +1222,22 @@ u64 lightray_compute_scene_suballocation_size(const lightray_scene_suballocation
 
 	const u64 quat_rotation_buffer = sunder_compute_aligned_allocation_size(sizeof(sunder_quat_t), suballocation_data->total_entity_count, alignment);
 
-	return  sunder_align64(entity_buffer_suballocation_size + transform_buffer_suballocation_size + mesh_binding_offsets_suballocation_size + mesh_binding_buffer_suballocation_size + mesh_binding_metadata_buffer_suballocation_size + grid_cell_index_buffer_suballocation_size + collision_attribute_buffer_suballocation_size + collision_mesh_batch_buffer_suballocation_size + collision_mesh_buffer_suballocation_size + has_already_collided_with_bitmask_buffer_suballocation_size + collision_layer_index_buffer_suballocation_size + game_side_entity_kind_bitmask_buffer_suballocation_size + raycast_grid_cell_index_subarena_suballocation_size + has_already_been_traced_bitmask_subarena_suballocation_size + raycast_pierce_layer_test_data_subarena_suballocation_size + quat_rotation_buffer, alignment);
+	const u64 chained_entity_index_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(u32), suballocation_data->total_entity_count, alignment);
+	const u64 entity_binding_chain_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(lightray_entity_binding_chain_t), suballocation_data->total_entity_count / 2, alignment);
+	const u64 entity_binding_chain_index_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(u32), suballocation_data->total_entity_count, alignment);
+	const u64 has_already_assembled_transform_matrix_bitmask_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(u64), SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count), alignment);
+	const u64 chained_entity_transform_matrix_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(sunder_m4_t), suballocation_data->total_entity_count, alignment);
+	const u64 already_part_of_other_binding_chain_bitmask_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(u64), SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count), alignment);
+	const u64 entity_children_index_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(u32), suballocation_data->total_entity_count * suballocation_data->entity_children_index_per_entity_count, alignment);
+	const u64 binding_chain_depth_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(u32), suballocation_data->total_entity_count, alignment);
+	const u64 has_already_written_into_binding_chain_bitmask_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(u64), SUNDER_COMPUTE_BUFFERED_BIT_COUNT(suballocation_data->total_entity_count), alignment);
+	const u64 closest_epa_result_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(lightray_epa_result_t), suballocation_data->collidable_entity_count, alignment);
+	const u64 temp_squared_distance_buffer_suballocation_size = sunder_compute_aligned_allocation_size(sizeof(f32), suballocation_data->collidable_entity_count, alignment);
+
+	return  sunder_align64(entity_buffer_suballocation_size + transform_buffer_suballocation_size + mesh_binding_offsets_suballocation_size + mesh_binding_buffer_suballocation_size + mesh_binding_metadata_buffer_suballocation_size + grid_cell_index_buffer_suballocation_size + collision_attribute_buffer_suballocation_size + collision_mesh_batch_buffer_suballocation_size + collision_mesh_buffer_suballocation_size + has_already_collided_with_bitmask_buffer_suballocation_size + collision_layer_index_buffer_suballocation_size + game_side_entity_kind_bitmask_buffer_suballocation_size + raycast_grid_cell_index_subarena_suballocation_size + has_already_been_traced_bitmask_subarena_suballocation_size + raycast_pierce_layer_test_data_subarena_suballocation_size + quat_rotation_buffer + chained_entity_index_buffer_suballocation_size + entity_binding_chain_buffer_suballocation_size + entity_binding_chain_index_buffer_suballocation_size + has_already_assembled_transform_matrix_bitmask_buffer_suballocation_size + chained_entity_transform_matrix_buffer_suballocation_size + already_part_of_other_binding_chain_bitmask_buffer_suballocation_size + entity_children_index_buffer_suballocation_size + binding_chain_depth_buffer_suballocation_size + has_already_written_into_binding_chain_bitmask_buffer_suballocation_size + closest_epa_result_buffer_suballocation_size + temp_squared_distance_buffer_suballocation_size, alignment);
 }
 
-lightray_entity_creation_result_t lightray_create_entity(lightray_scene_t* scene, lightray_entity_kind kind, u32 flags)
+lightray_entity_creation_result_t lightray_create_entity(lightray_scene_t* scene, lightray_entity_kind kind, u16 flags)
 {
 	lightray_entity_creation_result_t res{};
 	res.result = LIGHTRAY_RESULT_TOTAL_ENTITY_COUNT_IS_ZERO;
@@ -830,13 +1252,13 @@ lightray_entity_creation_result_t lightray_create_entity(lightray_scene_t* scene
 	res.index = scene->current_entity_count;
 
 	scene->entity_buffer[scene->current_entity_count].kind = kind;
-	scene->entity_buffer[scene->current_entity_count].flags = flags;
+	scene->entity_buffer[scene->current_entity_count].flags |= flags;
 	scene->current_entity_count++;
 
 	return res;
 }
 
-lightray_mesh_binding_result_t lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u32 mesh_index, lightray_render_target_kind kind)
+lightray_mesh_binding_result_t lightray_bind_mesh(lightray_scene_t* scene, u32 entity_index, u16 mesh_index, lightray_render_target_kind kind)
 {
 	lightray_mesh_binding_result_t res{};
 	res.mesh_binding_index = UINT32_MAX;
@@ -881,7 +1303,7 @@ lightray_mesh_binding_result_t lightray_bind_mesh(lightray_scene_t* scene, u32 e
 		}
 	}
 
-	scene->entity_buffer[entity_index].mesh_binding_index = mesh_index;
+	scene->entity_buffer[entity_index].global_mesh_index = mesh_index;
 	scene->mesh_binding_buffer[scene->mesh_binding_count].transform_index = entity_index;
 
 	if (kind == LIGHTRAY_RENDER_TARGET_KIND_OPAQUE_MESH)
@@ -995,6 +1417,11 @@ void lightray_unhide_entity(lightray_model_t* instance_model_buffer, lightray_mo
 	scene->entity_tick_buffer[scene->entity_buffer[entity_index].converted_instance_model_buffer_index].converted_instance_model_index = next_instance_model_index;*/
 }
 
+u32 lightray_get_entity_children_index_buffer_offset(const lightray_scene_t* scene, u32 entity_index)
+{
+	return entity_index * scene->entity_children_index_per_entity_count;
+}
+
 void lightray_bind_entity(lightray_scene_t* scene, u32 entity_to_bind_index, u32 entity_to_bind_to_index)
 {
 	if (!sunder_valid_index(entity_to_bind_index, scene->total_entity_count) || !sunder_valid_index(entity_to_bind_to_index, scene->total_entity_count))
@@ -1002,110 +1429,23 @@ void lightray_bind_entity(lightray_scene_t* scene, u32 entity_to_bind_index, u32
 		return;
 	}
 
-	scene->entity_buffer[entity_to_bind_index].entity_binding_index = entity_to_bind_to_index;
-}
+	const u32 entity_children_count = scene->entity_buffer[entity_to_bind_to_index].children_index_count;
 
-void lightray_move_entity(lightray_scene_t* scene, u32 self_aabb_index, u32 self_collision_mesh_index, const u32* index_buffer_offsets, const u32* index_count_buffer, const u32* index_buffer, const lightray_vertex_t* vertex_buffer, lightray_model_t* instance_model_buffer, glm::vec3* self_raw_vertex_positions, glm::vec3* self_projected_vertex_positions, glm::vec3* other_raw_vertex_positions, glm::vec3* other_projected_vertex_positions, u32 entity_index, const glm::vec3& direction)
-{
+	if (sunder_valid_index(entity_children_count, scene->entity_children_index_per_entity_count))
+	{
+		if(!(sunder_valid_index(scene->current_chained_entity_count + 1, scene->total_chained_entity_count))) // +1 because it's an actual count, validity of doubly increment index will be checked upon next call
+		{
+			return;
+		}
 
+		scene->chained_entity_index_buffer[scene->current_chained_entity_count] = entity_to_bind_to_index;
+		scene->chained_entity_index_buffer[scene->current_chained_entity_count + 1] = entity_to_bind_index;
+		scene->current_chained_entity_count += 2;
 
-
-
-
-
-		//for (u32 i = 0; i < scene->aabb_count; i++)
-		//{
-		//	const u32 tested_aabb_index = scene->aabb_index_buffer[i];
-		//	const glm::vec3 aabb_position_a = scene->position_buffer[tested_aabb_index];
-		//	const glm::vec3 aabb_scale_a = scene->scale_buffer[tested_aabb_index];
-
-		//	for (u32 j = 0; j < scene->aabb_count; j++)
-		//	{
-		//		if (scene->aabb_index_buffer[j] != tested_aabb_index)
-		//		{
-		//			const glm::vec3 aabb_position_b = scene->position_buffer[scene->aabb_index_buffer[j]];
-		//			const glm::vec3 aabb_scale_b = scene->scale_buffer[scene->aabb_index_buffer[j]];
-
-		//			const bool intersect = lightray::aabbs_intersect(aabb_position_a, aabb_scale_a, aabb_position_b, aabb_scale_b);
-
-		//			if (intersect)
-		//			{
-		//				//SUNDER_LOG("\naabbs intersect");
-
-		//				for (u32 k = 0; k < scene->collision_mesh_count; k++)
-		//				{
-		//					const u32 aabb_entity_binding_index_a = scene->entity_buffer[tested_aabb_index].entity_binding_index;
-		//					const lightray::es::entity_kind aabb_entity_binding_kind_a = scene->entity_buffer[aabb_entity_binding_index_a].kind;
-		//					const u32 aabb_entity_binding_mesh_binding_index_a = scene->entity_buffer[aabb_entity_binding_index_a].mesh_binding_index;
-		//					const u32 aabb_entity_binding_instance_model_binding_index_a = scene->entity_buffer[aabb_entity_binding_index_a].instance_model_binding_index;
-
-		//					for (u32 l = 0; l < scene->collision_mesh_count; l++)
-		//					{
-		//						const u32 aabb_entity_binding_index_b = scene->entity_buffer[scene->aabb_index_buffer[j]].entity_binding_index;
-		//						const lightray::es::entity_kind aabb_entity_binding_kind_b = scene->entity_buffer[aabb_entity_binding_index_b].kind;
-		//						const u32 aabb_entity_binding_mesh_binding_index_b = scene->entity_buffer[aabb_entity_binding_index_b].mesh_binding_index;
-		//						const u32 aabb_entity_binding_instance_model_binding_index_b = scene->entity_buffer[aabb_entity_binding_index_b].instance_model_binding_index;
-
-		//						if (aabb_entity_binding_kind_a == lightray::es::ENTITY_KIND_COLLISION_MESH && aabb_entity_binding_kind_a == aabb_entity_binding_kind_b)
-		//						{
-		//							const u32 general_index_buffer_offset_a = index_buffer_offsets[aabb_entity_binding_mesh_binding_index_a];
-		//							const u32 general_index_count_a = index_count_buffer[aabb_entity_binding_mesh_binding_index_a];
-		//							const lightray::model_t general_model_matrix_a = instance_model_buffer[aabb_entity_binding_instance_model_binding_index_a];
-
-		//							//glm::vec3 old_position_a = scene->position_buffer[aabb_entity_binding_index_a];
-		//							//glm::vec3 old_position_b = scene->position_buffer[aabb_entity_binding_index_b];
-
-		//							//scene->position_buffer[aabb_entity_binding_index_a] += movement_direction * 1.5f;
-		//							//scene->position_buffer[aabb_entity_binding_index_b] += movement_direction * 1.5f;
-
-		//							const u32 general_index_buffer_offset_b = index_buffer_offsets[aabb_entity_binding_mesh_binding_index_b];
-		//							const u32 general_index_count_b = index_count_buffer[aabb_entity_binding_mesh_binding_index_b];
-		//							const lightray::model_t general_model_matrix_b = instance_model_buffer[aabb_entity_binding_instance_model_binding_index_b];
-
-		//							lightray::get_raw_vertex_positions(general_index_buffer_offset_a, general_index_count_a, raw_vertex_positions_a, vertex_buffer, index_buffer);
-		//							lightray::get_projected_vertex_positions(raw_vertex_positions_a, projected_vertex_positions_a, general_index_count_a, general_model_matrix_a);
-
-		//							lightray::get_raw_vertex_positions(general_index_buffer_offset_b, general_index_count_b, raw_vertex_positions_b, vertex_buffer, index_buffer);
-		//							lightray::get_projected_vertex_positions(raw_vertex_positions_b, projected_vertex_positions_b, general_index_count_b, general_model_matrix_b);
-
-		//							const bool collision_meshes_intersect = lightray::gjk_intersect(projected_vertex_positions_a, general_index_count_a, projected_vertex_positions_b, general_index_count_b);
-
-		//							if (collision_meshes_intersect)
-		//							{
-		//								/*scene.entity_buffer[aabb_entity_binding_index_a].flags |= 1U << lightray::es::ENTITY_BITS_IS_COLLIDING;
-		//								scene.entity_buffer[aabb_entity_binding_index_b].flags |= 1U << lightray::es::ENTITY_BITS_IS_COLLIDING;
-
-		//								scene.position_buffer[aabb_entity_binding_index_a] = old_position_a;
-		//								scene.position_buffer[aabb_entity_binding_index_b] = old_position_b;*/
-
-		//								SUNDER_LOG("\ncollision meshes intersect");
-
-		//								break;
-		//							}
-
-		//							else
-		//							{
-
-		//								/*scene.position_buffer[aabb_entity_binding_index_a] = old_position_a;
-		//								scene.position_buffer[aabb_entity_binding_index_b] = old_position_b;
-
-		//								scene.entity_buffer[aabb_entity_binding_index_a].flags &= ~(1U << lightray::es::ENTITY_BITS_IS_COLLIDING);
-		//								scene.entity_buffer[aabb_entity_binding_index_b].flags &= ~(1U << lightray::es::ENTITY_BITS_IS_COLLIDING);*/
-
-		//								/*SUNDER_LOG("\n");
-		//								SUNDER_LOG(scene.entity_buffer[aabb_entity_binding_index_a].flags);
-		//								SUNDER_LOG("\n");
-		//								SUNDER_LOG(scene.entity_buffer[aabb_entity_binding_index_b].flags);*/
-		//							}
-		//						}
-		//					}
-		//				}
-		//			}
-		//		}
-		//	}
-		//}
-
-		//scene->position_buffer[entity_index] += direction;
+		scene->entity_buffer[entity_to_bind_index].parent_index = entity_to_bind_to_index;
+		scene->entity_children_index_buffer[lightray_get_entity_children_index_buffer_offset(scene, entity_to_bind_to_index) + entity_children_count] = entity_to_bind_index;
+		scene->entity_buffer[entity_to_bind_to_index].children_index_count++;
+	}
 }
 
 u32 lightray_get_entity_bound_collision_mesh_index_count(const lightray_scene_t* scene, u32 entity_index)
@@ -1821,7 +2161,7 @@ void lightray_get_grid_cell_coordinates_aabb(const lightray_grid_t* grid, const 
 	column_coordinates->max = max_column;
 }
 
-u32 lightray_push_collision_attribute(lightray_scene_t* scene)
+u32 lightray_push_collision_attribute(lightray_scene_t* scene, u32 entity_index)
 {
 	u32 attribute_index = UINT32_MAX;
 
@@ -1833,19 +2173,24 @@ u32 lightray_push_collision_attribute(lightray_scene_t* scene)
 		scene->collision_attribute_buffer[attribute_index].has_already_collided_with_bitmask_buffer_offset = scene->has_already_collided_with_bitmask_per_collision_attribute_count * attribute_index;
 		scene->collision_attribute_buffer[attribute_index].collision_layer_index_buffer_offset = 64 * attribute_index;
 		scene->collision_attribute_current_count++;
+
+		scene->collision_attribute_buffer[attribute_index].entity_index = entity_index;
+		scene->entity_buffer[entity_index].collision_attribute_index = attribute_index;
 	}
 
 	return attribute_index;
 }
 
-void lightray_bind_aabb(lightray_scene_t* scene, u32 collidable_entity_index, u32 aabb_index, u32 collision_attribute_index)
+void lightray_bind_aabb(lightray_scene_t* scene, u32 entity_index, u32 aabb_index)
 {
-	if (!sunder_valid_index(collision_attribute_index, scene->total_collidable_entity_count))
+	const u32 entity_collision_attribute_index = scene->entity_buffer[entity_index].collision_attribute_index;
+
+	if (!sunder_valid_index(entity_collision_attribute_index, scene->total_collidable_entity_count))
 	{
 		return;
 	}
 
-	const lightray_entity_kind collidable_entity_kind = scene->entity_buffer[collidable_entity_index].kind;
+	const lightray_entity_kind collidable_entity_kind = scene->entity_buffer[entity_index].kind;
 	const lightray_entity_kind aabb_entity_kind = scene->entity_buffer[aabb_index].kind;
 
 	if (collidable_entity_kind == LIGHTRAY_ENTITY_KIND_AABB || collidable_entity_kind == LIGHTRAY_ENTITY_KIND_COLLISION_MESH)
@@ -1858,8 +2203,8 @@ void lightray_bind_aabb(lightray_scene_t* scene, u32 collidable_entity_index, u3
 		return;
 	}
 
-	scene->collision_attribute_buffer[collision_attribute_index].aabb_index = aabb_index;
-	lightray_bind_entity(scene, aabb_index, collidable_entity_index);
+	scene->collision_attribute_buffer[entity_collision_attribute_index].aabb_index = aabb_index;
+	lightray_bind_entity(scene, aabb_index, entity_index);
 }
 
 u32 lightray_get_grid_cell_index(const lightray_grid_t* grid, u32 row_index, u32 column_index)
@@ -1965,6 +2310,7 @@ u32 lightray_push_collision_mesh(lightray_scene_t* scene, u32 collision_mesh_bat
 		scene->collision_mesh_buffer[collision_mesh_buffer_index].model = model;
 		scene->collision_mesh_buffer[collision_mesh_buffer_index].entity_index = collision_mesh_index;
 		scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_count++;
+		scene->current_collision_mesh_count++;
 		return_collision_mesh_index = collision_mesh_count;
 	}
 
@@ -1974,43 +2320,376 @@ u32 lightray_push_collision_mesh(lightray_scene_t* scene, u32 collision_mesh_bat
 void lightray_bind_collision_mesh_batch(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_attribute_index)
 {
 	scene->collision_attribute_buffer[collision_attribute_index].collision_mesh_batch_index = collision_mesh_batch_index;
+	const u32 collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_buffer_offset;
+	const u32 collision_mesh_count = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_count;
+	const u32 collision_attribute_owner_entity_index = scene->collision_attribute_buffer[collision_attribute_index].entity_index;
+
+	for (u32 i = 0; i < collision_mesh_count; i++)
+	{
+		const u32 current_collision_mesh_entity_index = scene->collision_mesh_buffer[collision_mesh_buffer_offset + i].entity_index;
+		lightray_bind_entity(scene, current_collision_mesh_entity_index, collision_attribute_owner_entity_index);
+	}
 }
 
-void lightray_allocate_collision_mesh_vertex_buffers(lightray_scene_t* scene)
+void lightray_allocate_collision_mesh_vertex_buffers(lightray_scene_t* scene, u32 capsule_collision_mesh_batch_index, u32 capsule_collision_mesh_index)
 {
 	const u32 total_collision_mesh_batch_count = scene->total_collision_mesh_batch_count;
-	u64 total_vertex_buffers_allocation_size = 0;
+	const u32 total_collision_mesh_count = scene->current_collision_mesh_count;
+	u64 initial_sentinel_index_buffer_suballocation_size_aligned = 0;
+	u64 initial_sentinel_index_buffer_suballocation_size = 0;
 
-	for (u32 i = 0; i < total_collision_mesh_batch_count; i++)
+	u64 cull_bitmask = 0;
+
+	// computing intermediate_sentinel_index_buffer allocation size
+	for (u32 cmb = 0; cmb < total_collision_mesh_batch_count; cmb++)
 	{
-		const u32 collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[i].collision_mesh_buffer_offset;
-		const u32 total_collision_mesh_count_in_a_batch = scene->collision_mesh_batch_buffer[i].collision_mesh_count;
+		const u32 current_collision_mesh_count = scene->collision_mesh_batch_buffer[cmb].collision_mesh_count;
+		const u32 current_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[cmb].collision_mesh_buffer_offset;
 
-		for (u32 j = 0; j < total_collision_mesh_count_in_a_batch; j++)
+		for (u32 cm = 0; cm < current_collision_mesh_count; cm++)
 		{
-			total_vertex_buffers_allocation_size += sunder_compute_aligned_allocation_size(sizeof(sunder_v3_t), scene->collision_mesh_buffer[collision_mesh_buffer_offset + j].vertex_count * 2, alignof(u64));
-			total_vertex_buffers_allocation_size = sunder_align64(total_vertex_buffers_allocation_size, alignof(u64));
+			const u32 current_index_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].vertex_count;
+			const u32 current_index_buffer_offset = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].index_buffer_offset;
+			b32 should_cull = SUNDER_FALSE;
+
+			for (u32 d = 0; d < total_collision_mesh_count; d++)
+			{
+				const u32 other_index_buffer_offset = scene->collision_mesh_buffer[d].index_buffer_offset;
+
+				if (other_index_buffer_offset == current_index_buffer_offset)
+				{
+					if (SUNDER_IS_ANY_BIT_SET(cull_bitmask, d, 1ull))
+					{
+						should_cull = SUNDER_TRUE;
+						break;
+					}
+				}
+
+			} // d
+
+			if (should_cull)
+			{
+				continue;
+			}
+
+			initial_sentinel_index_buffer_suballocation_size_aligned += sunder_compute_aligned_allocation_size(sizeof(u32), current_index_count, alignof(u32));
+			initial_sentinel_index_buffer_suballocation_size += sunder_compute_array_size_in_bytes(sizeof(u32), current_index_count);
+			initial_sentinel_index_buffer_suballocation_size_aligned = sunder_align64(initial_sentinel_index_buffer_suballocation_size_aligned, alignof(u64));
+			SUNDER_SET_BIT(cull_bitmask, current_collision_mesh_buffer_offset + cm, 1ull);
+		} // cm
+
+	} // cmb
+
+	sunder_arena_t intermediate_arena{};
+	const sunder_arena_result intermediate_arena_allocation_result = sunder_allocate_arena(&intermediate_arena, initial_sentinel_index_buffer_suballocation_size_aligned, alignof(u64));
+
+	const sunder_arena_suballocation_result_t initial_sentinel_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&intermediate_arena, initial_sentinel_index_buffer_suballocation_size, alignof(u32));
+	scene->sentinel_index_buffer = SUNDER_CAST(u32*, initial_sentinel_index_buffer_suballocation_result.data);
+	u32 sentinel_index_buffer_offset = 0;
+	cull_bitmask = 0;
+
+	// getting sentinel vertex indices
+	for (u32 cmb = 0; cmb < total_collision_mesh_batch_count; cmb++)
+	{
+		const u32 current_collision_mesh_count = scene->collision_mesh_batch_buffer[cmb].collision_mesh_count;
+		const u32 current_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[cmb].collision_mesh_buffer_offset;
+
+		for (u32 cm = 0; cm < current_collision_mesh_count; cm++)
+		{
+			const u32 current_index_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].vertex_count;
+			const u32 current_index_buffer_offset = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].index_buffer_offset;
+			b32 is_duplicate = SUNDER_FALSE;
+
+			for (u32 d = 0; d < total_collision_mesh_count; d++)
+			{
+				const u32 other_index_buffer_offset = scene->collision_mesh_buffer[d].index_buffer_offset;
+
+				if (current_index_buffer_offset == other_index_buffer_offset)
+				{
+					if (SUNDER_IS_ANY_BIT_SET(cull_bitmask, d, 1ull))
+					{
+						scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[d].sentinel_local_space_vertex_position_buffer_offset;
+						scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_vertex_count = scene->collision_mesh_buffer[d].sentinel_vertex_count;
+
+						is_duplicate = SUNDER_TRUE;
+						break;
+					}
+				}
+			}
+
+			if (is_duplicate)
+			{
+				continue;
+			}
+
+			for (u32 v = 0; v < current_index_count; v++)
+			{
+				u32 current_sentinel_index_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_vertex_count;
+				const u32 current_vertex_index = scene->index_buffer[current_index_buffer_offset + v];
+				b32 should_be_culled = SUNDER_FALSE;
+
+				for (u32 i = 0; i < current_sentinel_index_count; i++)
+				{
+					const u32 current_sentinel_vertex_index = scene->sentinel_index_buffer[sentinel_index_buffer_offset + i];
+					const sunder_v3_t vertex = lightray_glm_vec3_to_sunder(scene->vertex_buffer[current_vertex_index].position);
+					const sunder_v3_t sentinel_vertex = lightray_glm_vec3_to_sunder(scene->vertex_buffer[current_sentinel_vertex_index].position);
+
+					if (sentinel_vertex == vertex)
+					{
+						should_be_culled = SUNDER_TRUE;
+						break;
+					}
+
+				} // i
+
+				if (!should_be_culled)
+				{
+					scene->sentinel_index_buffer[sentinel_index_buffer_offset + current_sentinel_index_count] = current_vertex_index;
+					scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_vertex_count++;
+				}
+
+			} // v
+
+			scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_local_space_vertex_position_buffer_offset = sentinel_index_buffer_offset;
+			sentinel_index_buffer_offset += scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_vertex_count;
+			SUNDER_SET_BIT(cull_bitmask, current_collision_mesh_buffer_offset + cm, 1ull);
+
+		} // cm
+
+	} // cmb
+
+	// computing an allocation size for all world space vertex position buffers
+	u64 accumulated_sentinel_world_space_vertex_position_buffer_allocation_size = 0;
+
+	for (u32 cmb = 0; cmb < total_collision_mesh_batch_count; cmb++)
+	{
+		const u32 current_collision_mesh_count = scene->collision_mesh_batch_buffer[cmb].collision_mesh_count;
+		const u32 current_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[cmb].collision_mesh_buffer_offset;
+
+		for (u32 cm = 0; cm < current_collision_mesh_count; cm++)
+		{
+			const u32 current_sentinel_vertex_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_vertex_count;
+			accumulated_sentinel_world_space_vertex_position_buffer_allocation_size += sunder_compute_aligned_allocation_size(sizeof(sunder_v3_t), current_sentinel_vertex_count, alignof(u64));
+			accumulated_sentinel_world_space_vertex_position_buffer_allocation_size = sunder_align64(accumulated_sentinel_world_space_vertex_position_buffer_allocation_size, alignof(u64));
+		} // cm
+		
+	} // cmv
+
+	const u32 chosen_collision_mesh_capsule_index = scene->collision_mesh_batch_buffer[capsule_collision_mesh_batch_index].collision_mesh_buffer_offset + capsule_collision_mesh_index;
+	const u32 chosen_collision_mesh_capsule_sentinel_vertex_count = scene->collision_mesh_buffer[chosen_collision_mesh_capsule_index].sentinel_vertex_count;
+	const u32 chosen_collision_mesh_capsule_index_count = scene->collision_mesh_buffer[chosen_collision_mesh_capsule_index].vertex_count;
+
+	u64 capsule_beyond_lower_clipping_plane_data_allocation_size = sunder_compute_aligned_allocation_size(sizeof(u32), chosen_collision_mesh_capsule_sentinel_vertex_count, alignof(u64));
+	capsule_beyond_lower_clipping_plane_data_allocation_size = sunder_align64(capsule_beyond_lower_clipping_plane_data_allocation_size, alignof(u64));
+	capsule_beyond_lower_clipping_plane_data_allocation_size += sunder_compute_aligned_allocation_size(sizeof(u32), chosen_collision_mesh_capsule_index_count, alignof(u64));
+	capsule_beyond_lower_clipping_plane_data_allocation_size = sunder_align64(capsule_beyond_lower_clipping_plane_data_allocation_size, alignof(u64));
+
+	const u64 sentinel_local_space_vertex_position_buffer_allocation_size = sunder_compute_aligned_allocation_size(sizeof(sunder_v3_t), sentinel_index_buffer_offset, alignof(sunder_v3_t));
+	const u64 sentinel_local_space_vertex_position_buffer_suballocation_size = sunder_compute_array_size_in_bytes(sizeof(sunder_v3_t), sentinel_index_buffer_offset);
+
+	const u64 collision_data_arena_allocation_size = initial_sentinel_index_buffer_suballocation_size + sentinel_local_space_vertex_position_buffer_allocation_size + accumulated_sentinel_world_space_vertex_position_buffer_allocation_size + capsule_beyond_lower_clipping_plane_data_allocation_size;
+	const sunder_arena_result collision_data_arena_allocation_result = sunder_allocate_arena(&scene->collision_mesh_vertex_buffers_arena, collision_data_arena_allocation_size, alignof(u64));
+
+	const sunder_arena_suballocation_result_t sentinel_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&scene->collision_mesh_vertex_buffers_arena, initial_sentinel_index_buffer_suballocation_size, alignof(u32));
+	u32* temp_sentinel_index_buffer_ptr = SUNDER_CAST(u32*, sentinel_index_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t sentinel_local_space_vertex_position_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&scene->collision_mesh_vertex_buffers_arena, sentinel_local_space_vertex_position_buffer_suballocation_size, alignof(sunder_v3_t));
+	scene->sentinel_local_space_vertex_position_buffer = SUNDER_CAST(sunder_v3_t*, sentinel_local_space_vertex_position_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t capsule_beyond_lower_clipping_plane_sentinel_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&scene->collision_mesh_vertex_buffers_arena, sunder_compute_array_size_in_bytes(sizeof(u32), chosen_collision_mesh_capsule_sentinel_vertex_count), alignof(u32));
+	scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer = SUNDER_CAST(u32*, capsule_beyond_lower_clipping_plane_sentinel_index_buffer_suballocation_result.data);
+
+	const sunder_arena_suballocation_result_t capsule_beyond_lower_clipping_plane_triangle_index_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&scene->collision_mesh_vertex_buffers_arena, sunder_compute_array_size_in_bytes(sizeof(u32), chosen_collision_mesh_capsule_index_count), alignof(u32));
+	scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer = SUNDER_CAST(u32*, capsule_beyond_lower_clipping_plane_triangle_index_buffer_suballocation_result.data);
+
+	sunder_buffer_copy_data_t buffer_copy_data{};
+	buffer_copy_data.src_offset = 0;
+	buffer_copy_data.dst_offset = 0;
+	buffer_copy_data.src_size = initial_sentinel_index_buffer_suballocation_size;
+	buffer_copy_data.dst_size = initial_sentinel_index_buffer_suballocation_size;
+	buffer_copy_data.bytes_to_write = initial_sentinel_index_buffer_suballocation_size;
+
+	const u64 bytes_written = sunder_copy_buffer(temp_sentinel_index_buffer_ptr, scene->sentinel_index_buffer, &buffer_copy_data);
+	scene->sentinel_index_buffer = temp_sentinel_index_buffer_ptr;
+	sunder_free_arena(&intermediate_arena);
+
+	// copying intermediate_sentinel_index_buffer to sentinel_local_space_vertex_position_buffer
+	for (u32 v = 0; v < sentinel_index_buffer_offset; v++)
+	{
+		const u32 vertex_index = scene->sentinel_index_buffer[v];
+		scene->sentinel_local_space_vertex_position_buffer[v] = lightray_glm_vec3_to_sunder(scene->vertex_buffer[vertex_index].position);
+	}
+
+	u32 sentinel_index_buffer_iter = 0;
+	cull_bitmask = 0;
+
+	// populating the triangle index buffer out of sentinel vertices
+	for (u32 cmb = 0; cmb < total_collision_mesh_batch_count; cmb++)
+	{
+		const u32 current_collision_mesh_count = scene->collision_mesh_batch_buffer[cmb].collision_mesh_count;
+		const u32 current_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[cmb].collision_mesh_buffer_offset;
+
+		for (u32 cm = 0; cm < current_collision_mesh_count; cm++)
+		{
+			const u32 current_index_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].vertex_count;
+			const u32 current_index_buffer_offset = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].index_buffer_offset;
+			const u32 current_sentinel_vertex_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_vertex_count;
+			const u32 current_sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_local_space_vertex_position_buffer_offset;
+			b32 is_duplicate = SUNDER_FALSE;
+
+			for (u32 d = 0; d < total_collision_mesh_count; d++)
+			{
+				const u32 other_index_buffer_offset = scene->collision_mesh_buffer[d].index_buffer_offset;
+
+				if (current_index_buffer_offset == other_index_buffer_offset)
+				{
+					if (SUNDER_IS_ANY_BIT_SET(cull_bitmask, d, 1ull))
+					{
+						scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_index_buffer_offset = scene->collision_mesh_buffer[d].sentinel_index_buffer_offset;
+						is_duplicate = SUNDER_TRUE;
+
+						break;
+					}
+				}
+
+			} // d
+
+			if (is_duplicate)
+			{
+				continue;
+			}
+
+			u32 sentinel_index_count = 0;
+
+			for (u32 v = 0; v < current_index_count; v++)
+			{
+				const u32 current_vertex_index = scene->index_buffer[current_index_buffer_offset + v];
+				const sunder_v3_t current_vertex = lightray_glm_vec3_to_sunder(scene->vertex_buffer[current_vertex_index].position);
+
+				for (u32 sv = 0; sv < current_sentinel_vertex_count; sv++)
+				{
+					const sunder_v3_t current_sentinel_vertex = scene->sentinel_local_space_vertex_position_buffer[current_sentinel_local_space_vertex_position_buffer_offset + sv];
+
+					if (current_sentinel_vertex == current_vertex)
+					{
+						scene->sentinel_index_buffer[sentinel_index_buffer_iter + sentinel_index_count] = sv;
+						sentinel_index_count++;
+						break;
+					}
+
+				} // sv
+
+			} // v
+
+			scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_index_buffer_offset = sentinel_index_buffer_iter;
+			sentinel_index_buffer_iter += sentinel_index_count;
+			SUNDER_SET_BIT(cull_bitmask, current_collision_mesh_buffer_offset + cm, 1ull);
+
+		} // cm
+
+	} // cmb
+
+	// populating the triangle index buffer out of sentinel vertices
+	for (u32 cmb = 0; cmb < total_collision_mesh_batch_count; cmb++)
+	{
+		const u32 current_collision_mesh_count = scene->collision_mesh_batch_buffer[cmb].collision_mesh_count;
+		const u32 current_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[cmb].collision_mesh_buffer_offset;
+
+		for (u32 cm = 0; cm < current_collision_mesh_count; cm++)
+		{
+			const u32 current_sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_local_space_vertex_position_buffer_offset;
+			const u32 current_index_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].vertex_count;
+			SUNDER_LOG("\n\n==========================================\n");
+
+			for (u32 i = 0; i < current_index_count; i++)
+			{
+				SUNDER_LOG(scene->sentinel_index_buffer[i]);
+				SUNDER_LOG(", ");
+			}
+
+		} // cm
+
+	} // cmb
+
+	// allocating sentinel_world_space_vertex_position_buffer of each collision mesh
+	for (u32 cmb = 0; cmb < total_collision_mesh_batch_count; cmb++)
+	{
+		const u32 current_collision_mesh_count = scene->collision_mesh_batch_buffer[cmb].collision_mesh_count;
+		const u32 current_collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[cmb].collision_mesh_buffer_offset;
+
+		for (u32 cm = 0; cm < current_collision_mesh_count; cm++)
+		{
+			const u32 current_sentinel_vertex_count = scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_vertex_count;
+			const sunder_arena_suballocation_result_t sentinel_world_space_vertex_position_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&scene->collision_mesh_vertex_buffers_arena, sunder_compute_array_size_in_bytes(sizeof(sunder_v3_t), current_sentinel_vertex_count), alignof(sunder_v3_t));
+			scene->collision_mesh_buffer[current_collision_mesh_buffer_offset + cm].sentinel_world_space_vertex_position_buffer = SUNDER_CAST(sunder_v3_t*, sentinel_world_space_vertex_position_buffer_suballocation_result.data);
 		}
 	}
 
-	const sunder_arena_result arena_allocation_result = sunder_allocate_arena(&scene->collision_mesh_vertex_buffers_arena, total_vertex_buffers_allocation_size, alignof(u64));
+	const u32 chosen_capsule_sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[chosen_collision_mesh_capsule_index].sentinel_local_space_vertex_position_buffer_offset;
+	const u32 chosen_capsule_sentinel_index_buffer_offset = scene->collision_mesh_buffer[chosen_collision_mesh_capsule_index].sentinel_index_buffer_offset;
+	const sunder_v3_t lower_clipping_plane_pivot_vertex = scene->sentinel_local_space_vertex_position_buffer[chosen_capsule_sentinel_local_space_vertex_position_buffer_offset + 1];
+	const f32 lower_clipping_plane_pivot_vertex_z = lower_clipping_plane_pivot_vertex.z;
+	u32 capsule_beyond_lower_clipping_plane_sentinel_index_buffer_iter = 0;
+	u32 capsule_beyond_lower_clipping_plane_triangle_index_buffer_iter = 0;
 
-	for (u32 i = 0; i < total_collision_mesh_batch_count; i++)
+	scene->capsule_sentinel_local_space_vertex_position_buffer_offset = chosen_capsule_sentinel_local_space_vertex_position_buffer_offset;
+	scene->capsule_sentinel_index_buffer_offset = chosen_capsule_sentinel_index_buffer_offset;
+
+	for (u32 sv = 0; sv < chosen_collision_mesh_capsule_sentinel_vertex_count; sv++)
 	{
-		const u32 collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[i].collision_mesh_buffer_offset;
-		const u32 total_collision_mesh_count_in_a_batch = scene->collision_mesh_batch_buffer[i].collision_mesh_count;
+		const sunder_v3_t current_sentinel_vertex = scene->sentinel_local_space_vertex_position_buffer[chosen_capsule_sentinel_local_space_vertex_position_buffer_offset + sv];
+		const f32 current_sentinel_vertex_z = current_sentinel_vertex.z;
 
-		for (u32 j = 0; j < total_collision_mesh_count_in_a_batch; j++)
+		if (current_sentinel_vertex_z <= lower_clipping_plane_pivot_vertex_z)
 		{
-			const u64 vertex_buffer_suballocation_size = sunder_compute_array_size_in_bytes(sizeof(sunder_v3_t), scene->collision_mesh_buffer[collision_mesh_buffer_offset + j].vertex_count);
-
-			const sunder_arena_suballocation_result_t raw_vertex_position_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&scene->collision_mesh_vertex_buffers_arena, vertex_buffer_suballocation_size, alignof(sunder_v3_t));
-			scene->collision_mesh_buffer[collision_mesh_buffer_offset + j].raw_vertex_position_buffer = SUNDER_CAST(sunder_v3_t*, raw_vertex_position_buffer_suballocation_result.data);
-
-			const sunder_arena_suballocation_result_t projected_vertex_position_buffer_suballocation_result = sunder_suballocate_from_arena_debug(&scene->collision_mesh_vertex_buffers_arena, vertex_buffer_suballocation_size, alignof(sunder_v3_t));
-			scene->collision_mesh_buffer[collision_mesh_buffer_offset + j].projected_vertex_position_buffer = SUNDER_CAST(sunder_v3_t*, projected_vertex_position_buffer_suballocation_result.data);
-		}
+			scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[capsule_beyond_lower_clipping_plane_sentinel_index_buffer_iter] = sv;
+			capsule_beyond_lower_clipping_plane_sentinel_index_buffer_iter++;
+		} 
 	}
+
+	SUNDER_LOG("\n\n");
+	for (u32 i = 0; i < capsule_beyond_lower_clipping_plane_sentinel_index_buffer_iter; i++)
+	{
+		SUNDER_LOG(scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[i]);
+		SUNDER_LOG(", ");
+	} 
+
+	for (u32 i = 0; i < chosen_collision_mesh_capsule_index_count; i += 3)
+	{
+		const u32 v0_index = scene->sentinel_index_buffer[chosen_capsule_sentinel_index_buffer_offset + i + 0];
+		const u32 v1_index = scene->sentinel_index_buffer[chosen_capsule_sentinel_index_buffer_offset + i + 1];
+		const u32 v2_index = scene->sentinel_index_buffer[chosen_capsule_sentinel_index_buffer_offset + i + 2];
+
+		const sunder_v3_t v0 = scene->sentinel_local_space_vertex_position_buffer[chosen_capsule_sentinel_local_space_vertex_position_buffer_offset + v0_index];
+		const sunder_v3_t v1 = scene->sentinel_local_space_vertex_position_buffer[chosen_capsule_sentinel_local_space_vertex_position_buffer_offset + v1_index];
+		const sunder_v3_t v2 = scene->sentinel_local_space_vertex_position_buffer[chosen_capsule_sentinel_local_space_vertex_position_buffer_offset + v2_index];
+
+		const f32 v0_z = v0.z;
+		const f32 v1_z = v1.z;
+		const f32 v2_z = v2.z;
+
+		if (v0_z > lower_clipping_plane_pivot_vertex_z || v1_z > lower_clipping_plane_pivot_vertex_z || v2_z > lower_clipping_plane_pivot_vertex_z)
+		{
+			continue;
+		}
+
+		scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer[capsule_beyond_lower_clipping_plane_triangle_index_buffer_iter + 0] = v0_index;
+		scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer[capsule_beyond_lower_clipping_plane_triangle_index_buffer_iter + 1] = v1_index;
+		scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer[capsule_beyond_lower_clipping_plane_triangle_index_buffer_iter + 2] = v2_index;
+		capsule_beyond_lower_clipping_plane_triangle_index_buffer_iter += 3;
+	}
+
+	scene->capsule_beyond_lower_clipping_plane_sentinel_index_count = capsule_beyond_lower_clipping_plane_sentinel_index_buffer_iter;
+	scene->capsule_beyond_lower_clipping_plane_triangle_index_count = capsule_beyond_lower_clipping_plane_triangle_index_buffer_iter;
+
+	SUNDER_LOG("\n\n");
+	for (u32 i = 0; i < capsule_beyond_lower_clipping_plane_triangle_index_buffer_iter; i++)
+	{
+		SUNDER_LOG("\n");
+		SUNDER_LOG(scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer[i]);
+	}
+
+	u32 temp_break = 0;
 }
 
 void lightray_free_collision_mesh_vertex_buffers(lightray_scene_t* scene)
@@ -2018,18 +2697,17 @@ void lightray_free_collision_mesh_vertex_buffers(lightray_scene_t* scene)
 	sunder_free_arena(&scene->collision_mesh_vertex_buffers_arena);
 }
 
-void lightray_initialize_collision_mesh_raw_vertex_buffer(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_mesh_index)
+void lightray_initialize_collision_mesh_sentinel_world_space_vertex_buffer(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_mesh_index)
 {
 	const u32 collision_mesh_buffer_index = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_buffer_offset + collision_mesh_index;
+	const u32 local_space_buffer_offset = scene->collision_mesh_buffer[collision_mesh_buffer_index].sentinel_local_space_vertex_position_buffer_offset;
+	const u32 sentinel_vertex_count = scene->collision_mesh_buffer[collision_mesh_buffer_index].sentinel_vertex_count;
+	const sunder_m4_t m = lightray_copy_glm_mat4_to_sunder(scene->collision_mesh_buffer[collision_mesh_buffer_index].model->model);
+	sunder_v3_t* world_space_vertex_position_buffer = scene->collision_mesh_buffer[collision_mesh_buffer_index].sentinel_world_space_vertex_position_buffer;
 
-	lightray_get_raw_vertex_positions(scene->collision_mesh_buffer[collision_mesh_buffer_index].index_buffer_offset, scene->collision_mesh_buffer[collision_mesh_buffer_index].vertex_count, scene->collision_mesh_buffer[collision_mesh_buffer_index].raw_vertex_position_buffer, scene->vertex_buffer, scene->index_buffer);
-}
+	lightray_compute_sentinel_world_space_vertex_positions(scene->sentinel_local_space_vertex_position_buffer + local_space_buffer_offset, world_space_vertex_position_buffer, sentinel_vertex_count, m);
 
-void lightray_initialize_collision_mesh_projected_vertex_buffer(lightray_scene_t* scene, u32 collision_mesh_batch_index, u32 collision_mesh_index)
-{
-	const u32 collision_mesh_buffer_index = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_buffer_offset + collision_mesh_index;
-
-	lightray_compute_projected_vertex_positions(scene->collision_mesh_buffer[collision_mesh_buffer_index].raw_vertex_position_buffer, scene->collision_mesh_buffer[collision_mesh_buffer_index].projected_vertex_position_buffer, scene->collision_mesh_buffer[collision_mesh_buffer_index].vertex_count, scene->collision_mesh_buffer[collision_mesh_buffer_index].model);
+	//lightray_compute_sentinel_world_space_vertex_positions(scene->sentinel_local_space_vertex_position_buffer + local_space_buffer_offset, scene->collision_mesh_buffer[collision_mesh_buffer_index].sentinel_world_space_vertex_position_buffer, scene->collision_mesh_buffer[collision_mesh_buffer_index].sentinel_vertex_count, lightray_copy_glm_mat4_to_sunder(scene->collision_mesh_buffer[collision_mesh_buffer_index].model->model));
 }
 
 void lightray_add_collision_layer(lightray_scene_t* scene, u32 collision_attribute_index, u64 collision_layer)
@@ -2127,10 +2805,13 @@ void lightray_set_collision_attribute_entity_kind(lightray_scene_t* scene, u32 c
 	scene->collision_attribute_buffer[collision_mesh_attribute_index].game_side_entity_kind = game_side_entity_kind;
 }
 
-b32 lightray_ray_aabb_intersect(const lightray_ray_t* ray, const sunder_v3_t& aabb_position, const sunder_v3_t& aabb_scale, f32* t_hit)
+b32 lightray_ray_aabb_intersect(const lightray_ray_t* ray, const sunder_v3_t& aabb_position, const sunder_v3_t& aabb_scale, f32* t_hit, sunder_v3_t* normal)
 {
 	f32 t_min = -FLT_MAX;
 	f32 t_max = ray->distance;
+
+	i32 hit_axis = -1;
+	i32 hit_sign = 0;
 
 	const sunder_v3_t ray_origin = sunder_v3(ray->origin.x, ray->origin.y, ray->origin.z);
 	const sunder_v3_t ray_direction = sunder_v3(ray->direction.x, ray->direction.y, ray->direction.z);
@@ -2152,15 +2833,28 @@ b32 lightray_ray_aabb_intersect(const lightray_ray_t* ray, const sunder_v3_t& aa
 			f32 t1 = (bmin - o) / d;
 			f32 t2 = (bmax - o) / d;
 
+			i32 sign_t1 = -1;
+			i32 sign_t2 = +1;
+
 			// Swap if direction is negative
 			if (t1 > t2)
 			{
 				f32 temp = t1;
 				t1 = t2;
 				t2 = temp;
+
+				i32 temp_sign = sign_t1;
+				sign_t1 = sign_t2;
+				sign_t2 = temp_sign;
 			}
 
-			if (t1 > t_min) t_min = t1;
+			if (t1 > t_min)
+			{
+				t_min = t1;
+				hit_axis = axis;
+				hit_sign = sign_t1;
+			}	
+
 			if (t2 < t_max) t_max = t2;
 
 			if (t_min > t_max) return SUNDER_FALSE; // No intersection
@@ -2186,6 +2880,110 @@ b32 lightray_ray_aabb_intersect(const lightray_ray_t* ray, const sunder_v3_t& aa
 			*t_hit = 0.0f;
 		}
 		//*t_hit = t_min >= 0 ? t_min : t_max;
+	}
+
+	if (hit_axis == 0)
+	{
+		normal->x = (f32)hit_sign;
+	}
+
+	if (hit_axis == 1)
+	{
+		normal->y = (f32)hit_sign;
+	}
+
+	if (hit_axis == 2)
+	{
+		normal->z = (f32)hit_sign;
+	}
+
+	return SUNDER_TRUE;
+}
+
+b32 lightray_ray_aabb_intersect_precomputed(const lightray_ray_t* ray, const sunder_v3_t& aabb_min, const sunder_v3_t& aabb_max, f32* t_hit, sunder_v3_t* normal)
+{
+	f32 t_min = -FLT_MAX;
+	f32 t_max = ray->distance;
+
+	i32 hit_axis = -1;
+	i32 hit_sign = 0;
+
+	const sunder_v3_t ray_origin = sunder_v3(ray->origin.x, ray->origin.y, ray->origin.z);
+	const sunder_v3_t ray_direction = sunder_v3(ray->direction.x, ray->direction.y, ray->direction.z);
+
+	for (u32 axis = 0; axis < 3; axis++)
+	{
+		const f32 o = axis == 0 ? ray_origin.x : (axis == 1 ? ray_origin.y : ray_origin.z);
+		const f32 d = axis == 0 ? ray_direction.x : (axis == 1 ? ray_direction.y : ray_direction.z);
+		const f32 bmin = axis == 0 ? aabb_min.x : (axis == 1 ? aabb_min.y : aabb_min.z);
+		const f32 bmax = axis == 0 ? aabb_max.x : (axis == 1 ? aabb_max.y : aabb_max.z);
+
+		if (d != 0.0f)
+		{
+			f32 t1 = (bmin - o) / d;
+			f32 t2 = (bmax - o) / d;
+
+			i32 sign_t1 = -1;
+			i32 sign_t2 = +1;
+
+			// Swap if direction is negative
+			if (t1 > t2)
+			{
+				f32 temp = t1;
+				t1 = t2;
+				t2 = temp;
+
+				i32 temp_sign = sign_t1;
+				sign_t1 = sign_t2;
+				sign_t2 = temp_sign;
+			}
+
+			if (t1 > t_min)
+			{
+				t_min = t1;
+				hit_axis = axis;
+				hit_sign = sign_t1;
+			}
+
+			if (t2 < t_max) t_max = t2;
+
+			if (t_min > t_max) return SUNDER_FALSE; // No intersection
+			if (t_max < 0) return SUNDER_FALSE;     // Box is behind ray
+		}
+
+		else
+		{
+			// Ray parallel to this axis
+			if (o < bmin || o > bmax) return SUNDER_FALSE; // Outside slab
+		}
+	}
+
+	if (t_hit)
+	{
+		if (t_min >= 0.0f)
+		{
+			*t_hit = t_min;        // first intersection in front of ray
+		}
+
+		else if (t_max >= 0.0f)
+		{
+			*t_hit = 0.0f;
+		}
+	}
+
+	if (hit_axis == 0)
+	{
+		normal->x = (f32)hit_sign;
+	}
+
+	if (hit_axis == 1)
+	{
+		normal->y = (f32)hit_sign;
+	}
+
+	if (hit_axis == 2)
+	{
+		normal->z = (f32)hit_sign;
 	}
 
 	return SUNDER_TRUE;
@@ -2253,7 +3051,8 @@ u32 lightray_handle_grid_traversal_aftermath(const lightray_grid_t* grid, sunder
 		scale_buffer[cube_entity_index] = sunder_v3(lightray_get_default_cube_grid_scale_x(grid), lightray_get_default_cube_grid_scale_y(grid), 90.0f);
 		f32 t_hit = 0.0f;
 
-		const b32 cell_on_ray_path = lightray_ray_aabb_intersect(aabb_intersection_ray, position_buffer[cube_entity_index], scale_buffer[cube_entity_index], &t_hit);
+		sunder_v3_t normal{};
+		const b32 cell_on_ray_path = lightray_ray_aabb_intersect(aabb_intersection_ray, position_buffer[cube_entity_index], scale_buffer[cube_entity_index], &t_hit, &normal);
 
 		if (cell_on_ray_path)
 		{
@@ -2283,7 +3082,7 @@ bool lightray_quick_sort_compare_raycast_pierce_layer_test_data_squared_distance
 SUNDER_IMPLEMENT_QUICK_SORT_PARTITION_FUNCTION(lightray_raycast_pierce_layer_test_data_t, raycast_pierce_layer_test_data, lightray)
 SUNDER_IMPLEMENT_QUICK_SORT_FUNCTION(lightray_raycast_pierce_layer_test_data_t, raycast_pierce_layer_test_data, lightray)
 
-b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* data, u32* out_raycast_pierce_layer_test_data_count)
+b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* data, u32* out_raycast_pierce_layer_test_data_count, u16* external_inverse_written_count, sunder_m4_t* external_inverse_buffer, const lightray_render_instance_t* render_instance_buffer)
 {
 	u32 written_grid_cell_index_count = 0;
 	u32 written_collision_attribute_index_count = 0;
@@ -2427,6 +3226,14 @@ b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* da
 	u32 closest_collision_attribute_index = UINT32_MAX;
 	f32 closest_squared_distance = FLT_MAX;
 	sunder_v3_t closest_intersection_point{};
+	sunder_v3_t closest_triangle_normal{};
+
+	f32 t_hit_aabb = 0.0f;
+	sunder_v3_t aabb_hit_normal{};
+
+	b32 should_cull = SUNDER_FALSE;
+
+	u16 external_inverse_buffer_iter = 0;
 
 	for (u32 i = 0; i < written_grid_cell_index_count; i++)
 	{
@@ -2466,11 +3273,30 @@ b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* da
 
 					const b32 collision_attribute_collision_layer_check = SUNDER_IS_ANY_BIT_SET(collision_attribute_collision_layer_bitmask, current_collision_layer_bit, 1ull);
 					const b32 ray_collision_layer_check = SUNDER_IS_ANY_BIT_SET(data->collision_layer_bitmask, current_collision_layer_bit, 1ull);
+					const b32 cull_collision_layer_check = SUNDER_IS_ANY_BIT_SET(data->cull_collision_layer_bitmask, current_collision_layer_bit, 1ull);
 
-					if (collision_attribute_collision_layer_check && ray_collision_layer_check)
+					if (collision_attribute_collision_layer_check && ray_collision_layer_check && (!cull_collision_layer_check))
 					{
 						SUNDER_SET_BIT(common_collision_layer_bitmask, current_collision_layer_bit, 1ull);
 					}
+
+					else if(collision_attribute_collision_layer_check && ray_collision_layer_check && cull_collision_layer_check)
+					{
+						should_cull = SUNDER_TRUE;
+						break;
+					}
+					
+					else if (collision_attribute_collision_layer_check && !ray_collision_layer_check)
+					{
+						should_cull = SUNDER_TRUE;
+						break;
+					}
+				}
+
+				if (should_cull)
+				{
+					should_cull = SUNDER_FALSE;
+					continue;
 				}
 
 				if (common_collision_layer_bitmask == 0)
@@ -2479,36 +3305,120 @@ b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* da
 				}
 			}
 
-			const sunder_v3_t collision_attribute_aabb_position = scene->position_buffer[collision_attribute_aabb_entity_index];
-			const sunder_v3_t collision_attribute_aabb_scale = scene->scale_buffer[collision_attribute_aabb_entity_index];
-			f32 t_hit = 0.0f;
-
-			const b32 collision_attribute_aabb_ray_intersect = lightray_ray_aabb_intersect(&aabb_intersection_ray, collision_attribute_aabb_position, collision_attribute_aabb_scale, &t_hit);
+			const u32 collision_attribute_aabb_instance_model_binding_index = scene->entity_buffer[collision_attribute_aabb_entity_index].instance_model_binding_index;
+			const sunder_v3_t collision_attribute_aabb_position = sunder_extract_translation_m4(lightray_copy_glm_mat4_to_sunder(render_instance_buffer[collision_attribute_aabb_instance_model_binding_index].model.model));
+			const sunder_v3_t collision_attribute_aabb_scale = sunder_extract_scale_m4(lightray_copy_glm_mat4_to_sunder(render_instance_buffer[collision_attribute_aabb_instance_model_binding_index].model.model));
+		
+			//const sunder_v3_t collision_attribute_aabb_position = scene->position_buffer[collision_attribute_aabb_entity_index];
+			//const sunder_v3_t collision_attribute_aabb_scale = scene->scale_buffer[collision_attribute_aabb_entity_index];
+	
+			const b32 collision_attribute_aabb_ray_intersect = lightray_ray_aabb_intersect(&aabb_intersection_ray, collision_attribute_aabb_position, collision_attribute_aabb_scale, &t_hit_aabb, &aabb_hit_normal);
 
 			if (collision_attribute_aabb_ray_intersect)
 			{
+				//SUNDER_LOG("\n\naabb position: ");
+				//sunder_log_v3(collision_attribute_aabb_position);
+				//SUNDER_LOG("\naabb scale: ");
+				//sunder_log_v3(collision_attribute_aabb_scale);
+
 				const u32 collision_mesh_batch_index = scene->collision_attribute_buffer[current_cai].collision_mesh_batch_index;
 				const u32 collision_mesh_count = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_count;
 				const u32 collision_mesh_buffer_offset = scene->collision_mesh_batch_buffer[collision_mesh_batch_index].collision_mesh_buffer_offset;
 
 				f32 out_t = 0.0f;
+				sunder_v3_t hit_v0{};
+				sunder_v3_t hit_v1{};
+				sunder_v3_t hit_v2{};
 
 				for (u32 cm = 0; cm < collision_mesh_count; cm++)
 				{
-					sunder_v3_t* collision_mesh_projected_vertex_positions = scene->collision_mesh_buffer[collision_mesh_buffer_offset + cm].projected_vertex_position_buffer;
-					const u32 collision_mesh_vertex_count = scene->collision_mesh_buffer[collision_mesh_buffer_offset + cm].vertex_count;
+					const sunder_m4_t model = lightray_copy_glm_mat4_to_sunder(scene->collision_mesh_buffer[collision_mesh_buffer_offset + cm].model->model);
+					sunder_m4_t model_inverse{};
+
+					if (SUNDER_IS_ANY_BIT_SET(data->flags, LIGHTRAY_RAYCAST_BITS_EXTERNAL_INVERSE_READ_BIT, 1u))
+					{
+						model_inverse = external_inverse_buffer[external_inverse_buffer_iter];
+					}
+
+					else
+					{
+						model_inverse = sunder_m4_inverse(model);
+					}
 					
-					f32 out_u = 0.0f;
-					f32 out_v = 0.0f;
+					if (SUNDER_IS_ANY_BIT_SET(data->flags, LIGHTRAY_RAYCAST_BITS_EXTERNAL_INVERSE_WRITE_BIT, 1u))
+					{
+						external_inverse_buffer[external_inverse_buffer_iter] = model_inverse;
+						(*external_inverse_written_count)++;
+						external_inverse_buffer_iter++;
+					}
+
+					const u32 sentinel_index_buffer_offset = scene->collision_mesh_buffer[collision_mesh_buffer_offset + cm].sentinel_index_buffer_offset;
+					const u32 sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[collision_mesh_buffer_offset + cm].sentinel_local_space_vertex_position_buffer_offset;
+					const sunder_v3_t* sentinel_local_space_vertex_position_buffer = scene->sentinel_local_space_vertex_position_buffer;
+					const u32 collision_mesh_vertex_count = scene->collision_mesh_buffer[collision_mesh_buffer_offset + cm].vertex_count;
+
+					const sunder_v4_t local_ray_origin_v4 = model_inverse * sunder_v4(ray_origin.x, ray_origin.y, ray_origin.z, 1.0f);
+					const sunder_v4_t local_ray_direction_v4 = model_inverse * sunder_v4(ray_direction.x, ray_direction.y, ray_direction.z, 0.0f);
+
+					lightray_ray_t transformed_ray{};
+					transformed_ray.origin = sunder_v3(local_ray_origin_v4.x, local_ray_origin_v4.y, local_ray_origin_v4.z);
+					transformed_ray.direction = sunder_normalize_v3(sunder_v3(local_ray_direction_v4.x, local_ray_direction_v4.y, local_ray_direction_v4.z));
+					transformed_ray.distance = ray_distance;
 
 					b32 collision_mesh_ray_intersect = SUNDER_FALSE;
+					sunder_v3_t intersection_point{};
+					sunder_v3_t triangle_normal{};
 
-					for (u32 v = 0; v < collision_mesh_vertex_count; v += 3)
+					u32* chosen_sentinel_index_buffer = scene->sentinel_index_buffer;
+					u32 chosen_sentinel_index_buffer_offset = sentinel_index_buffer_offset;
+					u32 chosen_collision_mesh_vertex_count = collision_mesh_vertex_count;
+
+					if (SUNDER_IS_ANY_BIT_SET(data->flags, LIGHTRAY_RAYCAST_BITS_ENTRY_BIT, 1ull))
 					{
-						const b32 ray_triangle_intersect = lightray_ray_triangle_intersect(&aabb_intersection_ray, &collision_mesh_projected_vertex_positions[v], &out_t, &out_u, &out_v);
+						if (current_cai == data->capsule_collision_attribute_index)
+						{
+							if (cm == data->capsule_collision_mesh_index)
+							{
+								chosen_sentinel_index_buffer = scene->capsule_beyond_lower_clipping_plane_triangle_index_buffer;
+								chosen_sentinel_index_buffer_offset = 0;
+								chosen_collision_mesh_vertex_count = scene->capsule_beyond_lower_clipping_plane_triangle_index_count;
+							}
+						}
+					}
+					
+					for (u32 v = 0; v < chosen_collision_mesh_vertex_count; v += 3)
+					{
+						f32 out_u = 0.0f;
+						f32 out_v = 0.0f;
+
+						sunder_v3_t tri[3]{};
+						u32 tri_indices[3]{};
+
+						tri_indices[0] = chosen_sentinel_index_buffer[chosen_sentinel_index_buffer_offset + v + 0];
+						tri_indices[1] = chosen_sentinel_index_buffer[chosen_sentinel_index_buffer_offset + v + 1];
+						tri_indices[2] = chosen_sentinel_index_buffer[chosen_sentinel_index_buffer_offset + v + 2];
+
+						tri[0] = scene->sentinel_local_space_vertex_position_buffer[sentinel_local_space_vertex_position_buffer_offset + tri_indices[0]];
+						tri[1] = scene->sentinel_local_space_vertex_position_buffer[sentinel_local_space_vertex_position_buffer_offset + tri_indices[1]];
+						tri[2] = scene->sentinel_local_space_vertex_position_buffer[sentinel_local_space_vertex_position_buffer_offset + tri_indices[2]];
+
+						const b32 ray_triangle_intersect = lightray_ray_triangle_intersect(&transformed_ray, tri, &out_t, &out_u, &out_v, data->culling_mode, &hit_v0, &hit_v1, &hit_v2);
 
 						if (ray_triangle_intersect)
 						{
+							intersection_point = transformed_ray.origin + transformed_ray.direction * out_t;
+							intersection_point = sunder_v3_v4(model * sunder_v4(intersection_point.x, intersection_point.y, intersection_point.z, 1.0f));
+
+							// normal computation is done in world space because blender is fucking awesome and distorts local space triangle vertices sometimes))
+							hit_v0 = sunder_v3_v4(model * sunder_v4_v3(hit_v0, 1.0f));
+							hit_v1 = sunder_v3_v4(model * sunder_v4_v3(hit_v1, 1.0f));
+							hit_v2 = sunder_v3_v4(model * sunder_v4_v3(hit_v2, 1.0f));
+
+							const sunder_v3_t AB = hit_v1 - hit_v0;
+							const sunder_v3_t AC = hit_v2 - hit_v0;
+
+							triangle_normal = sunder_normalize_v3(sunder_cross_v3(AB, AC));
+
 							collision_mesh_ray_intersect = SUNDER_TRUE;
 							break;
 						}
@@ -2520,7 +3430,6 @@ b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* da
 
 						if (sunder_valid_index(written_pierce_layer_test_data_count, data->raycast_pierce_layer_test_data_count))
 						{
-							const sunder_v3_t intersection_point = ray_origin + ray_direction * out_t;
 							const f32 intersection_ray_squared_distance = sunder_squared_distance_v3(intersection_point, ray_origin);
 
 							if (intersection_ray_squared_distance < closest_squared_distance)
@@ -2528,9 +3437,11 @@ b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* da
 								closest_squared_distance = intersection_ray_squared_distance;
 								closest_collision_attribute_index = current_cai;
 								closest_intersection_point = intersection_point;
+								closest_triangle_normal = triangle_normal;
 							}
 
 							scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset + written_pierce_layer_test_data_count].intersection_point = intersection_point;
+							scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset + written_pierce_layer_test_data_count].triangle_normal = triangle_normal;
 							scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset + written_pierce_layer_test_data_count].squared_distance = intersection_ray_squared_distance;
 							scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset + written_pierce_layer_test_data_count].collision_attribute_index = current_cai;
 								
@@ -2598,6 +3509,7 @@ b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* da
 		else
 		{
 			scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset].intersection_point = closest_intersection_point;
+			scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset].triangle_normal = closest_triangle_normal;
 			scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset].squared_distance = closest_squared_distance;
 			scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset].collision_attribute_index = closest_collision_attribute_index;
 			scene->pierce_layer_test_data_subarena[data->raycast_pierce_layer_test_data_subarena_offset].previous_hit_pierce_layer = UINT16_MAX;
@@ -2617,13 +3529,19 @@ b32 lightray_cast_ray(lightray_scene_t* scene, const lightray_raycast_data_t* da
 	{
 		const sunder_quat_t line_trace_rotation = sunder_rotate_from_to_v3(ray_direction, sunder_v3(0.0f, 1.0f, 0.0f));
 
-		const f32 ray_offset = 0.60f * ray_distance;
+		const f32 ray_offset = 0.20f * ray_distance;
 
 		scene->position_buffer[data->line_trace_entity_index] = ray_origin + ray_direction * ray_offset;
 		scene->quat_rotation_buffer[data->line_trace_entity_index] = line_trace_rotation;
 		scene->scale_buffer[data->line_trace_entity_index].y = ray_distance * 1.225f;
 		scene->scale_buffer[data->line_trace_entity_index].z = 0.01f;
 		scene->scale_buffer[data->line_trace_entity_index].x = 0.01f;
+
+
+		//const sunder_quat_t line_trace_rotation = sunder_rotate_from_to_v3(closest_triangle_normal, sunder_v3(0.0f, 1.0f, 0.0f));
+		//scene->quat_rotation_buffer[data->line_trace_entity_index] = line_trace_rotation;
+		//scene->position_buffer[data->line_trace_entity_index] = closest_intersection_point;
+		//scene->scale_buffer[data->line_trace_entity_index] = sunder_v3_scalar(0.1f);
 	}
 
 	*out_raycast_pierce_layer_test_data_count = filtered_pierce_layer_count;
@@ -2635,11 +3553,8 @@ lightray_ray_t lightray_ray(const sunder_v3_t& origin, const sunder_v3_t& direct
 {
 	lightray_ray_t result{};
 
-	const glm::vec3 converted_origin = glm::vec3(origin.x, origin.y, origin.z);
-	const glm::vec3 converted_direction = glm::vec3(direction.x, direction.y, direction.z);
-	
-	result.origin = converted_origin;
-	result.direction = converted_direction;
+	result.origin = origin;
+	result.direction = direction;
 	result.distance = distance;
 
 	return result;
@@ -2693,4 +3608,738 @@ sunder_m4_t lightray_get_bone_m4(const lightray_animation_core_t* animation_core
 	}
 
 	return lightray_copy_glm_mat4_to_sunder(animation_core->computed_bone_matrix_buffer[bone_computed_transform_matrix_buffer_index]);
+}
+
+void lightray_bind_entity_to_camera(lightray_scene_t* scene, u32 self_entity_index, u32 camera_index)
+{
+	//if (!(sunder_valid_index(self_entity_index, scene->total_entity_count)))
+	//{
+		//return;
+	//}
+
+	//scene->entity_buffer[self_entity_index].camera_binding_index = camera_index;
+}
+
+void lightray_bind_entity_to_bone(lightray_scene_t* scene, u32 self_entity_index, u32 bone_owner_entity_index, u32 bone_computed_transform_matrix_buffer_index)
+{
+	if (!(sunder_valid_index(self_entity_index, scene->total_entity_count)))
+	{
+		return;
+	}
+
+	if (!(sunder_valid_index(bone_owner_entity_index, scene->total_entity_count)))
+	{
+		return;
+	}
+
+	lightray_bind_entity(scene, self_entity_index, bone_owner_entity_index);
+	scene->entity_buffer[self_entity_index].bone_binding_index = bone_computed_transform_matrix_buffer_index;
+}
+
+void lightray_traverse_entity_binding_chain(lightray_scene_t* scene, u32* current_binding_chain_entity_index, u32 entity_binding_chain_index_buffer_offset, u32* entity_binding_chain_index_count)
+{
+	if (*current_binding_chain_entity_index == UINT32_MAX)
+	{
+		return;
+	}
+
+	SUNDER_SET_BUFFERED_BIT(scene->already_part_of_other_binding_chain_bitmask_buffer, *current_binding_chain_entity_index);
+	const u32 children_count = scene->entity_buffer[*current_binding_chain_entity_index].children_index_count;
+
+	SUNDER_LOG("\nbinding_chain_entity_index: ");
+	SUNDER_LOG(*current_binding_chain_entity_index);
+
+	scene->entity_binding_chain_index_buffer[entity_binding_chain_index_buffer_offset + (*entity_binding_chain_index_count)] = *current_binding_chain_entity_index;
+	(*entity_binding_chain_index_count)++;
+
+	if (children_count == 0)
+	{
+		const u32 parent_index = scene->entity_buffer[*current_binding_chain_entity_index].parent_index;
+		*current_binding_chain_entity_index = parent_index;
+
+		return;
+	}
+
+	const u32 entity_children_index_buffer_offset = lightray_get_entity_children_index_buffer_offset(scene, *current_binding_chain_entity_index);
+	const u32 next_binding_chain_entity_index = scene->entity_children_index_buffer[entity_children_index_buffer_offset];
+	*current_binding_chain_entity_index = next_binding_chain_entity_index;
+
+	for (u32 i = 0; i < children_count; i++)
+	{
+		lightray_traverse_entity_binding_chain(scene, current_binding_chain_entity_index, entity_binding_chain_index_buffer_offset, entity_binding_chain_index_count);
+	}
+}
+
+void lightray_add_entity_flags(lightray_scene_t* scene, u32 entity_index, u16 flags)
+{
+	if (!(sunder_valid_index(entity_index, scene->total_entity_count)))
+	{
+		return;
+	}
+
+	scene->entity_buffer[entity_index].flags |= flags;
+}
+
+void lightray_remove_entity_flags(lightray_scene_t* scene, u32 entity_index, u16 flags)
+{
+	if (!(sunder_valid_index(entity_index, scene->total_entity_count)))
+	{
+		return;
+	}
+
+	scene->entity_buffer[entity_index].flags &= ~flags;
+}
+
+void lightray_epa_add_face(lightray_epa_face_t* f, u32 face_count, const lightray_gjk_support_point_t* verts, u32 vert_count)
+{
+
+
+}
+
+lightray_epa_result_t lightray_solve_epa(lightray_gjk_support_point_t* simplex, u32 simplex_size, const sunder_v3_t* vertices_a, u32 vertex_count_a, const sunder_v3_t* vertices_b, u32 vertex_count_b)
+{
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
+	lightray_epa_result_t result{};
+	result.hit = false;
+
+	const int MAX_FACES = 64;
+	const int MAX_VERTS = 64;
+	const float EPA_EPSILON = 1e-4f;
+
+	// 1. Copy simplex to EPA vertices
+	lightray_gjk_support_point_t verts[MAX_VERTS];
+	int vert_count = simplex_size;
+	for (u32 i = 0; i < simplex_size; i++) verts[i] = simplex[i];
+
+	// 2. Build initial tetrahedron faces
+	struct Face { int a, b, c; sunder_v3_t normal; float distance; bool obsolete; };
+	Face faces[MAX_FACES];
+	int face_count = 0;
+
+	auto add_face = [&](int i0, int i1, int i2) 
+	{
+
+			if (face_count >= MAX_FACES) return;
+		Face f{ i0, i1, i2 };
+		sunder_v3_t v0 = verts[i0].p;
+		sunder_v3_t v1 = verts[i1].p;
+		sunder_v3_t v2 = verts[i2].p;
+		f.normal = sunder_normalize_v3(sunder_cross_v3(v1 - v0, v2 - v0));
+		f.distance = sunder_dot_v3(f.normal, v0);
+		f.obsolete = false;
+		faces[face_count++] = f;
+	};
+
+	add_face(0, 1, 2);
+	add_face(0, 2, 3);
+	add_face(0, 3, 1);
+	add_face(1, 3, 2);
+
+	// 3. Main EPA loop
+	for (int iter = 0; iter < 64; iter++)
+	{
+		// Find closest face
+		float minDist = FLT_MAX;
+		int closest = -1;
+		for (int i = 0; i < face_count; i++)
+		{
+			if (!faces[i].obsolete && faces[i].distance < minDist)
+			{
+				minDist = faces[i].distance;
+				closest = i;
+			}
+		}
+		if (closest == -1) break;
+
+		Face& cf = faces[closest];
+
+		// Support in direction of face normal
+		lightray_gjk_support_point_t newPt = lightray_gjk_support(vertices_a, vertex_count_a, vertices_b, vertex_count_b, cf.normal);
+		float newDist = sunder_dot_v3(newPt.p, cf.normal);
+
+		// Convergence
+		if (newDist - cf.distance < EPA_EPSILON)
+		{
+			result.hit = true;
+			result.depth = cf.distance;
+			result.normal = cf.normal;
+
+			// Compute contact point in A/B
+			result.contact_point = (verts[cf.a].a + verts[cf.b].a + verts[cf.c].a +
+				verts[cf.a].b + verts[cf.b].b + verts[cf.c].b) / 6.0f;
+			return result;
+		}
+
+		// Add new point
+		if (vert_count >= MAX_VERTS) break;
+		int new_i = vert_count++;
+		verts[new_i] = newPt;
+
+		// Mark faces visible to new point as obsolete
+		for (int i = 0; i < face_count; i++)
+		{
+			if (!faces[i].obsolete) 
+			{
+				sunder_v3_t a = verts[faces[i].a].p;
+				if (sunder_dot_v3(newPt.p - a, faces[i].normal) > 0)
+					faces[i].obsolete = true;
+			}
+		}
+
+		// Build horizon & new faces
+		// (simplified for clarity; see real EPA for proper horizon construction)
+		int oldCount = face_count;
+		for (int i = 0; i < oldCount; i++)
+		{
+			if (faces[i].obsolete) {
+				add_face(faces[i].a, faces[i].b, new_i);
+				add_face(faces[i].b, faces[i].c, new_i);
+				add_face(faces[i].c, faces[i].a, new_i);
+			}
+		}
+	}
+
+	return result;
+	
+
+	
+
+
+
+
+
+
+
+
+
+	//////////////////////////////////////////////////
+
+
+
+
+
+}
+
+sunder_v3_t lightray_add_impulse(const sunder_v3_t& velocity, const sunder_v3_t& impulse)
+{
+	return velocity + impulse;
+}
+
+b32 lightray_aabb_swept(const sunder_v3_t& movement_direction, const sunder_v3_t& aabb_position_a, const sunder_v3_t& aabb_scale_a, const sunder_v3_t& aabb_position_b, const sunder_v3_t& aabb_scale_b, f32* time)
+{
+	sunder_v3_t a_min{};
+	sunder_v3_t a_max{};
+
+	lightray_compute_aabb_min_max(aabb_position_a, aabb_scale_a, &a_min, &a_max);
+
+	sunder_v3_t b_min{};
+	sunder_v3_t b_max{};
+
+	lightray_compute_aabb_min_max(aabb_position_b, aabb_scale_b, &b_min, &b_max);
+
+	SUNDER_LOG("\na_min: ");
+	sunder_log_v3(a_min);
+	SUNDER_LOG("\na_max: ");
+	sunder_log_v3(a_max);
+
+	SUNDER_LOG("\nb_max: ");
+	sunder_log_v3(b_min);
+	SUNDER_LOG("\nb_max: ");
+	sunder_log_v3(b_max);
+
+
+	sunder_v3_t size_a = (a_max - a_min) * 0.5f;
+	SUNDER_LOG("\nsize_a: ");
+	sunder_log_v3(size_a);
+	
+
+	const sunder_v3_t converted_size = aabb_scale_a / 10.0f; // need this for correct aabb conversion for my cube mesh
+	const sunder_v3_t b_expanded_min = b_min - size_a;
+	const sunder_v3_t b_expanded_max = b_max + size_a;
+	
+	SUNDER_LOG("\nb_expanded_min: ");
+	sunder_log_v3(b_expanded_min);
+	SUNDER_LOG("\nb_expanded_max: ");
+	sunder_log_v3(b_expanded_max);
+
+	f32 t_hit = 0.0f;
+
+	lightray_ray_t ray{};
+	ray.origin = aabb_position_a;
+	ray.direction = movement_direction;
+	ray.distance = 100.0f;
+
+	sunder_v3_t normal{};
+	const b32 ray_hit = lightray_ray_aabb_intersect_precomputed(&ray, b_expanded_min, b_expanded_max, &t_hit, &normal);
+
+	*time = t_hit;
+
+	return ray_hit;
+}
+
+
+b32 lightray_capsule_triangle_swept(const lightray_capsule_t* capsule, const sunder_v3_t* tri, sunder_v3_t* normal, f32* t)
+{
+	sunder_v3_t p1 = capsule->p1;
+	sunder_v3_t p2 = capsule->p2;
+	f32 r = capsule->r;
+	sunder_v3_t d = p2 - p1;
+
+	const sunder_v3_t AB = tri[1] - tri[0];
+	const sunder_v3_t AC = tri[2] - tri[0];
+
+	sunder_v3_t N = sunder_cross_v3(AB, AC);
+	N = sunder_normalize_v3(N);
+
+	f32 dist1 = sunder_dot_v3(p1 - tri[0], N);
+	f32 dist2 = sunder_dot_v3(p2 - tri[0], N);
+
+	if ((dist1 > r && dist2 > r) || (dist1 < -r && dist2 < -r))
+	{
+		return SUNDER_FALSE;
+	}
+
+	const f32 t_plane = (r - dist2) / (dist2 - dist1);
+
+	if (t_plane < 0.0f || t_plane > 1.0f)
+	{
+		return SUNDER_FALSE;
+	}
+
+	const sunder_v3_t hit_center = p1 + d * t_plane - N * r;
+	const sunder_v3_t AP = hit_center - tri[0];
+
+	const f32 dot_AB_AB = sunder_dot_v3(AB, AB);
+	const f32 dot_AB_AC = sunder_dot_v3(AB, AC);
+	const f32 dot_AC_AC = sunder_dot_v3(AC, AC);
+	const f32 dot_AP_AB = sunder_dot_v3(AP, AB);
+	const f32 dot_AP_AC = sunder_dot_v3(AP, AC);
+
+	const f32 denom = dot_AB_AB * dot_AC_AC - dot_AB_AC * dot_AB_AC;
+	const f32 u = (dot_AC_AC * dot_AP_AB - dot_AB_AC * dot_AP_AC) / denom;
+	const f32 v = (dot_AB_AB * dot_AP_AC - dot_AB_AC * dot_AP_AB) / denom;
+
+	if (u >= 0.0f && v >= 0.0f && u + v <= 1.0f)
+	{
+		*normal = N;
+		*t = t_plane;
+		return SUNDER_TRUE;
+	}
+
+	return SUNDER_FALSE;
+}
+
+void lightray_cast_ray_cluster(u64 capsule_vertex_count, const u32* capsule_index_buffer, const sunder_v3_t* capsule_local_space_vertex_position_buffer, const sunder_m4_t& capsule_model, const sunder_m4_t& capsule_inverse, sunder_v3_t* capsule_intersection_point_buffer, u64 plane_vertex_count, const sunder_v3_t* plane_local_space_vertex_position_buffer, const sunder_m4_t& plane_model, const sunder_m4_t& plane_inverse, sunder_v3_t* plane_intersection_point_buffer, u32 ray_count, const sunder_v3_t* ray_origin_buffer, const sunder_v3_t& cluster_direction, u64* hit_bitmask_buffer_capsule, u64* hit_bitmask_buffer_plane)
+{
+	const sunder_v3_t capsule_ray_direction = sunder_normalize_v3(sunder_v3_v4(capsule_inverse * sunder_v4_v3(cluster_direction, 0.0f)));
+	const sunder_v3_t plane_ray_direction = sunder_normalize_v3(sunder_v3_v4(plane_inverse * sunder_v4_v3(cluster_direction, 0.0f)));
+
+	for (u32 i = 0; i < ray_count; i++)
+	{
+		lightray_ray_t capsule_ray{};
+		capsule_ray.origin = sunder_v3_v4(capsule_inverse * sunder_v4_v3(ray_origin_buffer[i], 1.0f));
+		capsule_ray.direction = capsule_ray_direction;
+		capsule_ray.distance = 100.0f;
+
+		for (u64 cv = 0; cv < capsule_vertex_count; cv += 3)
+		{
+			const u32 v0_index = capsule_index_buffer[cv + 0];
+			const u32 v1_index = capsule_index_buffer[cv + 1];
+			const u32 v2_index = capsule_index_buffer[cv + 2];
+
+			sunder_v3_t tri[3]{};
+			tri[0] = capsule_local_space_vertex_position_buffer[v0_index];
+			tri[1] = capsule_local_space_vertex_position_buffer[v1_index];
+			tri[2] = capsule_local_space_vertex_position_buffer[v2_index];
+
+			f32 out_t = 0.0f;
+			f32 out_u = 0.0f;
+			f32 out_v = 0.0f;
+
+			sunder_v3_t hit_v0{};
+			sunder_v3_t hit_v1{};
+			sunder_v3_t hit_v2{};
+
+			const b32 ray_hit = lightray_ray_triangle_intersect(&capsule_ray, tri, &out_t, &out_u, &out_v, LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_NONE, &hit_v0, &hit_v1, &hit_v2);
+
+			if (ray_hit)
+			{
+				sunder_v3_t intersection_point = capsule_ray.origin + capsule_ray.direction * out_t;
+				intersection_point = sunder_v3_v4(capsule_model * sunder_v4_v3(intersection_point, 1.0f));
+				capsule_intersection_point_buffer[i] = intersection_point;
+				SUNDER_SET_BUFFERED_BIT(hit_bitmask_buffer_capsule, i);
+
+				break;
+			}
+		}
+
+		//if (!(SUNDER_IS_BUFFERED_BIT_SET(hit_bitmask_buffer_capsule, i)))
+		//{
+			//continue;
+		//}
+
+		lightray_ray_t plane_ray{};
+		plane_ray.origin = sunder_v3_v4(plane_inverse * sunder_v4_v3(ray_origin_buffer[i], 1.0f));
+		plane_ray.direction = plane_ray_direction;
+		plane_ray.distance = 1000.0f;
+
+		for (u64 pv = 0; pv < plane_vertex_count; pv += 3)
+		{
+			f32 out_t = 0.0f;
+			f32 out_u = 0.0f;
+			f32 out_v = 0.0f;
+
+			sunder_v3_t hit_v0{};
+			sunder_v3_t hit_v1{};
+			sunder_v3_t hit_v2{};
+
+			const b32 ray_hit = lightray_ray_triangle_intersect(&plane_ray, &plane_local_space_vertex_position_buffer[pv], &out_t, &out_u, &out_v, LIGHTRAY_RAY_TRIANGLE_FACE_CULLING_MODE_BACKFACE, &hit_v0, &hit_v1, &hit_v2);
+
+			if (ray_hit)
+			{
+				sunder_v3_t intersection_point = plane_ray.origin + plane_ray.direction * out_t;
+				intersection_point = sunder_v3_v4(plane_model * sunder_v4_v3(intersection_point, 1.0f));
+				plane_intersection_point_buffer[i] = intersection_point;
+				SUNDER_SET_BUFFERED_BIT(hit_bitmask_buffer_plane, i);
+
+				break;
+			}
+		}
+	}
+}
+
+sunder_v3_t lightray_compute_segment_point(const sunder_v3_t& A, const sunder_v3_t& B, u32 index, f32 step, f32 z_alignment, b32 align_z)
+{
+	const sunder_v3_t V = B - A;
+	sunder_v3_t W = A + V * SUNDER_CAST(f32, index) / step;
+
+	if (align_z)
+	{
+		W.z = z_alignment;
+	}
+
+	return W;
+}
+
+f32 lightray_compute_capsule_to_plane_distance(lightray_capsule_to_plane_distance_computation_data_t* data)
+{
+	/*
+	const sunder_v3_t v0 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[0]], 1.0f));
+	const sunder_v3_t v1 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[1]], 1.0f));
+	const sunder_v3_t v2 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[2]], 1.0f));
+	const sunder_v3_t v3 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[3]], 1.0f));
+	const sunder_v3_t v4 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[4]], 1.0f));
+	const sunder_v3_t v5 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[5]], 1.0f));
+
+	const sunder_v3_t v6 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[6]], 1.0f));
+	const sunder_v3_t v7 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[7]], 1.0f));
+	const sunder_v3_t v8 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[8]], 1.0f));
+	const sunder_v3_t v9 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[9]], 1.0f));
+	const sunder_v3_t v10 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[10]], 1.0f));
+	const sunder_v3_t v11 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[11]], 1.0f));
+
+	const sunder_v3_t v12 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[12]], 1.0f));
+	const sunder_v3_t v13 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[13]], 1.0f));
+	const sunder_v3_t v14 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[14]], 1.0f));
+	const sunder_v3_t v15 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[15]], 1.0f));
+
+	const sunder_v3_t v16 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[16]], 1.0f));
+	const sunder_v3_t v17 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[17]], 1.0f));
+	const sunder_v3_t v18 = sunder_v3_v4((*data->capsule_model) * sunder_v4_v3(data->capsule_local_space_vertex_position_buffer[data->lower_clipping_plane_vertex_index_buffer[18]], 1.0f));
+	*/
+
+	//const f32 capsule_z = data->capsule_position.z;
+
+	//for (u32 v = 1; v < 10 + 1; v++)
+	//{
+	//	data->segments->v0v17[v - 1] = lightray_compute_segment_point(v0, v17, v, 11.0f, capsule_z, SUNDER_TRUE);
+	//	data->segments->v8v15[v - 1] = lightray_compute_segment_point(v8, v15, v, 11.0f, capsule_z, SUNDER_TRUE);
+
+	//	data->segments->v0v8[v - 1] = lightray_compute_segment_point(v0, v8, v, 11.0f, capsule_z, SUNDER_TRUE);
+	//	data->segments->v17v15[v - 1] = lightray_compute_segment_point(v17, v15, v, 11.0f, capsule_z, SUNDER_TRUE);
+
+	//	data->segments->v0v1[v - 1] = lightray_compute_segment_point(v0, v1, v, 11.0f, capsule_z, SUNDER_TRUE);
+	//	data->segments->v1v17[v - 1] = lightray_compute_segment_point(v17, v1, v, 11.0f, capsule_z, SUNDER_TRUE);
+	//	data->segments->v8v10[v - 1] = lightray_compute_segment_point(v8, v10, v, 11.0f, capsule_z, SUNDER_TRUE);
+	//	data->segments->v10v15[v - 1] = lightray_compute_segment_point(v15, v10, v, 11.0f, capsule_z, SUNDER_TRUE);
+	//}
+
+	/*
+	data->ray_cluster_origin_buffer[0] = sunder_v3(v0.x, v0.y, capsule_z);
+	data->ray_cluster_origin_buffer[1] = sunder_v3(v1.x, v1.y, capsule_z);
+	data->ray_cluster_origin_buffer[2] = sunder_v3(v2.x, v2.y, capsule_z);
+	data->ray_cluster_origin_buffer[3] = sunder_v3(v3.x, v3.y, capsule_z);
+	data->ray_cluster_origin_buffer[4] = sunder_v3(v4.x, v4.y, capsule_z);
+	data->ray_cluster_origin_buffer[5] = sunder_v3(v5.x, v5.y, capsule_z);
+	data->ray_cluster_origin_buffer[6] = sunder_v3(v6.x, v6.y, capsule_z);
+	data->ray_cluster_origin_buffer[7] = sunder_v3(v7.x, v7.y, capsule_z);
+	data->ray_cluster_origin_buffer[8] = sunder_v3(v8.x, v8.y, capsule_z);
+	data->ray_cluster_origin_buffer[9] = sunder_v3(v9.x, v9.y, capsule_z);
+	data->ray_cluster_origin_buffer[10] = sunder_v3(v10.x, v10.y, capsule_z);
+	data->ray_cluster_origin_buffer[11] = sunder_v3(v11.x, v11.y, capsule_z);
+	data->ray_cluster_origin_buffer[12] = sunder_v3(v12.x, v12.y, capsule_z);
+	data->ray_cluster_origin_buffer[13] = sunder_v3(v13.x, v13.y, capsule_z);
+	data->ray_cluster_origin_buffer[14] = sunder_v3(v14.x, v14.y, capsule_z);
+	data->ray_cluster_origin_buffer[15] = sunder_v3(v15.x, v15.y, capsule_z);
+	data->ray_cluster_origin_buffer[16] = sunder_v3(v16.x, v16.y, capsule_z);
+	data->ray_cluster_origin_buffer[17] = sunder_v3(v17.x, v17.y, capsule_z);
+	data->ray_cluster_origin_buffer[18] = sunder_v3(v18.x, v18.y, capsule_z);
+
+	u32 ray_cluster_origin_buffer_iter = 19;
+	*/
+
+	/*
+
+	for (u32 v = 0; v < 10; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v0v17[v];
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v8v15[v];
+		ray_cluster_origin_buffer_iter++;
+
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v0v8[v];
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v17v15[v];
+		ray_cluster_origin_buffer_iter++;
+
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v0v1[v];
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v1v17[v];
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v8v10[v];
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = data->segments->v10v15[v];
+		ray_cluster_origin_buffer_iter++;
+	}
+
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	for (u32 v = 0; v < 10; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[0], data->segments->v1v17[0], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[0], data->segments->v10v15[0], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 9; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[1], data->segments->v1v17[1], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[1], data->segments->v10v15[1], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 8; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[2], data->segments->v1v17[2], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[2], data->segments->v10v15[2], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 7; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[3], data->segments->v1v17[3], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[3], data->segments->v10v15[3], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 6; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[4], data->segments->v1v17[4], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[4], data->segments->v10v15[4], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 5; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[5], data->segments->v1v17[5], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[5], data->segments->v10v15[5], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 4; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[6], data->segments->v1v17[6], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[6], data->segments->v10v15[6], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 3; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[7], data->segments->v1v17[7], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[7], data->segments->v10v15[7], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 2; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[8], data->segments->v1v17[8], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[8], data->segments->v10v15[8], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 1; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v0v1[9], data->segments->v1v17[9], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[9], data->segments->v10v15[9], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+	*/
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	/*
+
+	for (u32 v = 0; v < 10; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[0], data->segments->v10v15[0], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 9; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[1], data->segments->v10v15[1], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 8; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[2], data->segments->v10v15[2], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 7; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[3], data->segments->v10v15[3], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 6; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[4], data->segments->v10v15[4], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 5; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[5], data->segments->v10v15[5], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 4; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[6], data->segments->v10v15[6], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 3; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[7], data->segments->v10v15[7], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 2; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[8], data->segments->v10v15[8], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+
+	for (u32 v = 0; v < 1; v++)
+	{
+		data->ray_cluster_origin_buffer[ray_cluster_origin_buffer_iter] = lightray_compute_segment_point(data->segments->v8v10[9], data->segments->v10v15[9], v + 1, 11.0f, capsule_z, SUNDER_TRUE);
+		ray_cluster_origin_buffer_iter++;
+	}
+	*/
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	/*
+	lightray_cast_ray_cluster(data->capsule_vertex_count, data->capsule_local_space_vertex_position_buffer, *data->capsule_model, *data->capsule_inverse, data->ray_capsule_intersection_point_buffer, data->plane_vertex_count, data->plane_local_space_vertex_position_buffer, *data->plane_model, *data->plane_inverse, data->ray_plane_intersection_point_buffer, ray_cluster_origin_buffer_iter, data->ray_cluster_origin_buffer, data->cluster_direction, data->capsule_hit_bitmask_buffer, data->plane_hit_bitmask_buffer);
+
+	u32 cluster_hit_count = 0;
+	
+	// merge that into ray cluster cast function
+	for (u32 i = 0; i < ray_cluster_origin_buffer_iter; i++)
+	{
+		if (SUNDER_IS_BUFFERED_BIT_SET(data->capsule_hit_bitmask_buffer, i) && SUNDER_IS_BUFFERED_BIT_SET(data->plane_hit_bitmask_buffer, i))
+		{
+			data->hit_mapping_buffer[cluster_hit_count] = i;
+			cluster_hit_count++;
+		}
+	}
+
+	//SUNDER_LOG("\n");
+	//SUNDER_LOG(cluster_hit_count);
+
+	u16 closest_ray_index = 0;
+	f32 closest_squared_distance = FLT_MAX;
+
+	for (u32 i = 0; i < cluster_hit_count; i++)
+	{
+		const u16 mi = data->hit_mapping_buffer[i];
+
+		const f32 squared_distance = sunder_squared_distance_v3(data->ray_capsule_intersection_point_buffer[mi], data->ray_plane_intersection_point_buffer[mi]);
+
+		if (squared_distance < closest_squared_distance)
+		{
+			closest_squared_distance = squared_distance;
+			closest_ray_index = i;
+		}
+	}
+
+	const u16 mcri = data->hit_mapping_buffer[closest_ray_index];
+
+	const f32 plane_projection_distance = sunder_distance_v3(data->ray_plane_intersection_point_buffer[mcri], data->ray_capsule_intersection_point_buffer[mcri]) - 0.00001f; // wacky epsilon
+
+	return plane_projection_distance;
+
+	*/
+
+	return 0.0f;
+}
+
+sunder_v3_t lightray_glm_vec3_to_sunder(const glm::vec3& v)
+{
+	return sunder_v3(v.x, v.y, v.z);
 }
