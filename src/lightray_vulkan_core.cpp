@@ -160,6 +160,8 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 
 	queue_family_supports_swapchain_presentation = VK_FALSE;
 
+	const u32 animation_playback_command_count = initialization_data->animation_playback_command_batch_count * initialization_data->animation_playback_command_per_command_batch_count;
+
 	u64 total_vertex_count = 0;
 	u32 total_index_count = 0;
 	u32 total_instance_model_count = 0;
@@ -173,7 +175,9 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	core->total_mesh_count = initialization_data->static_mesh_count + initialization_data->skeletal_mesh_count;
 	core->animation_core.total_animation_count = initialization_data->animation_count;
 	core->total_camera_attribute_count = initialization_data->camera_count;
-	core->animation_core.total_playback_command_count = initialization_data->animation_playback_command_count;
+	core->animation_core.total_playback_command_batch_count = initialization_data->animation_playback_command_batch_count;
+	core->animation_core.animation_playback_command_per_command_batch_count = initialization_data->animation_playback_command_per_command_batch_count;
+	core->animation_core.total_playback_command_count = animation_playback_command_count;
 	core->overlay_core.total_font_atlas_count = initialization_data->msdf_font_atlas_count;
 	core->overlay_core.total_glyph_count = glyph_count;
 	core->overlay_core.total_text_element_count = 20;
@@ -362,28 +366,29 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	{
 		aligned_allocation_size_buffer[0]	= sunder_compute_aligned_allocation_size(sizeof(lightray_camera_attribute_t), core->total_camera_attribute_count, initialization_data->arena_alignment); // camera_buffer
 		aligned_allocation_size_buffer[1] = sunder_compute_aligned_allocation_size(sizeof(lightray_cvp_t), core->total_camera_attribute_count, initialization_data->arena_alignment); // cvp_buffer
-		aligned_allocation_size_buffer[2] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_playback_command_t), initialization_data->animation_playback_command_count, initialization_data->arena_alignment); // animaiton_playback_command_buffer
-		aligned_allocation_size_buffer[3] = sunder_compute_aligned_allocation_size(sizeof(lightray_node_t), total_node_count, initialization_data->arena_alignment); // node_buffer
-		aligned_allocation_size_buffer[4] = sunder_compute_aligned_allocation_size(sizeof(lightray_bone_t), core->animation_core.total_bone_count, initialization_data->arena_alignment); // bone_buffer
-		aligned_allocation_size_buffer[5] = sunder_compute_aligned_allocation_size(sizeof(sunder_string_t), core->animation_core.total_bone_count, initialization_data->arena_alignment); // bone_names
-		aligned_allocation_size_buffer[6] = sunder_compute_aligned_allocation_size(sizeof(sunder_string_t), core->animation_core.total_animation_channel_count, initialization_data->arena_alignment); // animation_channel_names
-		aligned_allocation_size_buffer[7] = sunder_compute_aligned_allocation_size(sizeof(sunder_string_t), total_node_count, initialization_data->arena_alignment); // node_names
-		aligned_allocation_size_buffer[8] = sunder_compute_aligned_allocation_size(sizeof(glm::mat4), core->animation_core.total_skeleton_count, initialization_data->arena_alignment); // global_root_inverse_matrix_buffer
-		aligned_allocation_size_buffer[9] = sunder_compute_aligned_allocation_size(sizeof(glm::mat4), core->animation_core.total_bone_count, initialization_data->arena_alignment); // bone_bind_pose_matrix_buffer
-		aligned_allocation_size_buffer[10] = sunder_compute_aligned_allocation_size(sizeof(glm::mat4), core->animation_core.total_computed_bone_transform_matrix_buffer_bone_count, initialization_data->arena_alignment); // computed_bone_matrix_buffer
-		aligned_allocation_size_buffer[11] = sunder_compute_aligned_allocation_size(sizeof(lightray_skeleton_t), core->animation_core.total_skeleton_count, initialization_data->arena_alignment); // skeleton_buffer
-		aligned_allocation_size_buffer[12] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_channel_t), core->animation_core.total_animation_channel_count, initialization_data->arena_alignment); // animation_channel_buffer
-		aligned_allocation_size_buffer[13] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_t), core->animation_core.total_animation_count, initialization_data->arena_alignment); // animation_buffer
-		aligned_allocation_size_buffer[14] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_key_vec3_t), core->animation_core.total_animation_position_key_count, initialization_data->arena_alignment); // animation_position_key_buffer
-		aligned_allocation_size_buffer[15] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_key_quat_t), core->animation_core.total_animation_rotation_key_count, initialization_data->arena_alignment); // animation_rotation_key_buffer
-		aligned_allocation_size_buffer[16] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_key_vec3_t), core->animation_core.total_animation_scale_key_count, initialization_data->arena_alignment); // animation_scale_key_buffer
-		aligned_allocation_size_buffer[17] = sunder_compute_aligned_allocation_size(sizeof(lightray_vertex_t), total_vertex_count, initialization_data->arena_alignment); // cpu_side_vertex buffer 
-		aligned_allocation_size_buffer[18] = sunder_compute_aligned_allocation_size(sizeof(u32), total_index_count, initialization_data->arena_alignment); // cpu_side_index_buffer
-		aligned_allocation_size_buffer[19] = sunder_compute_aligned_allocation_size(sizeof(lightray_render_instance_t), total_instance_model_count, initialization_data->arena_alignment); // render_instance_buffer
-		aligned_allocation_size_buffer[20] = sunder_compute_aligned_allocation_size(sizeof(u64), device_local_vram_arena_allocation_count, initialization_data->arena_alignment); // device_local_vram_arena_starting_offsets
-		aligned_allocation_size_buffer[21] = sunder_compute_aligned_allocation_size(sizeof(VkExtensionProperties), core->available_device_extension_count, initialization_data->arena_alignment); // available_device_extensions
-		aligned_allocation_size_buffer[22] = sunder_compute_aligned_allocation_size(sizeof(u32), core->swapchain_presentation_supported_queue_family_index_count, initialization_data->arena_alignment); // swapchain_presentation_supported_queue_family_indices
-		aligned_allocation_size_buffer[23] = sunder_compute_aligned_allocation_size(sizeof(VkImage), core->swapchain_image_in_use_count * 7, initialization_data->arena_alignment); // swapchain_images / swapchain_image_related_data / 7 is the number of swapchain image related fields that needs to be the count of swapchain_image_in_use_count
+		aligned_allocation_size_buffer[2] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_playback_command_batch_t), initialization_data->animation_playback_command_batch_count, initialization_data->arena_alignment);
+		aligned_allocation_size_buffer[3] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_playback_command_t), animation_playback_command_count, initialization_data->arena_alignment); // animaiton_playback_command_buffer
+		aligned_allocation_size_buffer[4] = sunder_compute_aligned_allocation_size(sizeof(lightray_node_t), total_node_count, initialization_data->arena_alignment); // node_buffer
+		aligned_allocation_size_buffer[5] = sunder_compute_aligned_allocation_size(sizeof(lightray_bone_t), core->animation_core.total_bone_count, initialization_data->arena_alignment); // bone_buffer
+		aligned_allocation_size_buffer[6] = sunder_compute_aligned_allocation_size(sizeof(sunder_string_t), core->animation_core.total_bone_count, initialization_data->arena_alignment); // bone_names
+		aligned_allocation_size_buffer[7] = sunder_compute_aligned_allocation_size(sizeof(sunder_string_t), core->animation_core.total_animation_channel_count, initialization_data->arena_alignment); // animation_channel_names
+		aligned_allocation_size_buffer[8] = sunder_compute_aligned_allocation_size(sizeof(sunder_string_t), total_node_count, initialization_data->arena_alignment); // node_names
+		aligned_allocation_size_buffer[9] = sunder_compute_aligned_allocation_size(sizeof(glm::mat4), core->animation_core.total_skeleton_count, initialization_data->arena_alignment); // global_root_inverse_matrix_buffer
+		aligned_allocation_size_buffer[10] = sunder_compute_aligned_allocation_size(sizeof(glm::mat4), core->animation_core.total_bone_count, initialization_data->arena_alignment); // bone_bind_pose_matrix_buffer
+		aligned_allocation_size_buffer[11] = sunder_compute_aligned_allocation_size(sizeof(glm::mat4), core->animation_core.total_computed_bone_transform_matrix_buffer_bone_count, initialization_data->arena_alignment); // computed_bone_matrix_buffer
+		aligned_allocation_size_buffer[12] = sunder_compute_aligned_allocation_size(sizeof(lightray_skeleton_t), core->animation_core.total_skeleton_count, initialization_data->arena_alignment); // skeleton_buffer
+		aligned_allocation_size_buffer[13] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_channel_t), core->animation_core.total_animation_channel_count, initialization_data->arena_alignment); // animation_channel_buffer
+		aligned_allocation_size_buffer[14] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_t), core->animation_core.total_animation_count, initialization_data->arena_alignment); // animation_buffer
+		aligned_allocation_size_buffer[15] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_key_vec3_t), core->animation_core.total_animation_position_key_count, initialization_data->arena_alignment); // animation_position_key_buffer
+		aligned_allocation_size_buffer[16] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_key_quat_t), core->animation_core.total_animation_rotation_key_count, initialization_data->arena_alignment); // animation_rotation_key_buffer
+		aligned_allocation_size_buffer[17] = sunder_compute_aligned_allocation_size(sizeof(lightray_animation_key_vec3_t), core->animation_core.total_animation_scale_key_count, initialization_data->arena_alignment); // animation_scale_key_buffer
+		aligned_allocation_size_buffer[18] = sunder_compute_aligned_allocation_size(sizeof(lightray_vertex_t), total_vertex_count, initialization_data->arena_alignment); // cpu_side_vertex buffer 
+		aligned_allocation_size_buffer[19] = sunder_compute_aligned_allocation_size(sizeof(u32), total_index_count, initialization_data->arena_alignment); // cpu_side_index_buffer
+		aligned_allocation_size_buffer[20] = sunder_compute_aligned_allocation_size(sizeof(lightray_render_instance_t), total_instance_model_count, initialization_data->arena_alignment); // render_instance_buffer
+		aligned_allocation_size_buffer[21] = sunder_compute_aligned_allocation_size(sizeof(u64), device_local_vram_arena_allocation_count, initialization_data->arena_alignment); // device_local_vram_arena_starting_offsets
+		aligned_allocation_size_buffer[22] = sunder_compute_aligned_allocation_size(sizeof(VkExtensionProperties), core->available_device_extension_count, initialization_data->arena_alignment); // available_device_extensions
+		aligned_allocation_size_buffer[23] = sunder_compute_aligned_allocation_size(sizeof(u32), core->swapchain_presentation_supported_queue_family_index_count, initialization_data->arena_alignment); // swapchain_presentation_supported_queue_family_indices
+		aligned_allocation_size_buffer[24] = sunder_compute_aligned_allocation_size(sizeof(VkImage), core->swapchain_image_in_use_count * 7, initialization_data->arena_alignment); // swapchain_images / swapchain_image_related_data / 7 is the number of swapchain image related fields that needs to be the count of swapchain_image_in_use_count
 
 		u64 aligned_shader_byte_code_allocation_size_buffer[LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT]{};
 		aligned_shader_byte_code_allocation_size_buffer[0] = compiled_static_mesh_vertex_shader_byte_code_size;
@@ -395,31 +400,31 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		aligned_shader_byte_code_allocation_size_buffer[6] = compiled_overlay_vertex_shader_byte_code_size;
 		aligned_shader_byte_code_allocation_size_buffer[7] = compiled_overlay_fragment_shader_byte_code_size;
 
-		aligned_allocation_size_buffer[24] = sunder_accumulate_aligned_allocation_size(aligned_shader_byte_code_allocation_size_buffer, LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT, initialization_data->arena_alignment); // shader_byte_code_combined
-		aligned_allocation_size_buffer[25] = sunder_compute_aligned_allocation_size(sizeof(VkQueueFamilyProperties), core->supported_queue_family_property_count, initialization_data->arena_alignment); // queue_family_properties
-		aligned_allocation_size_buffer[26] = sunder_compute_aligned_allocation_size(sizeof(VkSurfaceFormatKHR), core->supported_surface_format_count, initialization_data->arena_alignment); // supported_surface_formats
-		aligned_allocation_size_buffer[27] = sunder_compute_aligned_allocation_size(sizeof(VkPresentModeKHR), core->supported_swapchain_present_mode_count, initialization_data->arena_alignment); // supported_swapchain_present_modes
-		aligned_allocation_size_buffer[28] = sunder_compute_aligned_allocation_size(sizeof(lightray_vulkan_mesh_render_pass_data_t), core->total_mesh_count, initialization_data->arena_alignment); // mesh_render_pass_data_buffer
-		aligned_allocation_size_buffer[29] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_mesh_count, initialization_data->arena_alignment); // mesh_render_pass_data_mapping_buffer
-		aligned_allocation_size_buffer[30] = lightray_vulkan_compute_vram_arena_required_metadata_allocation_size(host_visible_vram_arena_allocation_count, initialization_data->arena_alignment); // host_visible_vram_arena_metadata
-		aligned_allocation_size_buffer[31] = lightray_vulkan_compute_vram_arena_required_metadata_allocation_size(device_local_vram_arena_allocation_count, initialization_data->arena_alignment); // device_local_vram_arena_metadata
-		aligned_allocation_size_buffer[32] = lightray_vulkan_compute_vram_arena_required_metadata_allocation_size(host_visible_storage_vram_arena_allocation_count, initialization_data->arena_alignment); // host_visible_storage_vram_arena_metadata
-		aligned_allocation_size_buffer[33] = total_string_byte_code_size;
-		aligned_allocation_size_buffer[34] = sunder_compute_aligned_allocation_size(sizeof(lightray_font_atlas_t), 1, initialization_data->arena_alignment); // font_atlas buffer
-		aligned_allocation_size_buffer[35] = sunder_compute_aligned_allocation_size(sizeof(lightray_glyph_t), 256, initialization_data->arena_alignment); // glyph buffer
-		aligned_allocation_size_buffer[36] = sunder_compute_aligned_allocation_size(sizeof(lightray_render_instance_glyph_t), 256, initialization_data->arena_alignment); // render instance glyph buffer
-		aligned_allocation_size_buffer[37] = sunder_compute_aligned_allocation_size(sizeof(lightray_vulkan_texture_t), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // texture buffer
-		aligned_allocation_size_buffer[38] = sunder_compute_aligned_allocation_size(sizeof(VkMemoryRequirements), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // vram requirements buffer
-		aligned_allocation_size_buffer[39] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // vram type index buffer
-		aligned_allocation_size_buffer[40] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // vram type index filter buffer
-		aligned_allocation_size_buffer[41] = sunder_compute_aligned_allocation_size(sizeof(lightray_vulkan_texture_sampler_metadata_t), core->total_texture_count * 2, initialization_data->arena_alignment); // texture sampler metadata, filter buffers
-		aligned_allocation_size_buffer[42] = sunder_compute_aligned_allocation_size(sizeof(VkDescriptorSet), core->total_texture_count, initialization_data->arena_alignment); // descriptor sets
-		aligned_allocation_size_buffer[43] = sunder_compute_aligned_allocation_size(sizeof(VkDescriptorSetLayout), core->total_texture_count, initialization_data->arena_alignment); // copy descriptor set layouts
-		aligned_allocation_size_buffer[44] = sunder_compute_aligned_allocation_size(sizeof(VkDescriptorImageInfo), core->total_texture_count, initialization_data->arena_alignment); // combined image sampler info buffer
-		aligned_allocation_size_buffer[45] = sunder_compute_aligned_allocation_size(sizeof(u64), host_visible_vram_arena_allocation_count, initialization_data->arena_alignment); // host_visible_vram_arena_suballocation_starting_offsets 
-		aligned_allocation_size_buffer[46] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_mesh_count, initialization_data->arena_alignment); // mesh_render_pass_data_reordering_helper_buffer 
-		aligned_allocation_size_buffer[47] = sunder_compute_aligned_allocation_size(sizeof(lightray_overlay_text_element_t), core->overlay_core.total_text_element_count, initialization_data->arena_alignment); // overlay text element buffer
-		aligned_allocation_size_buffer[48] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_wireframe_present_mesh_index_count, initialization_data->arena_alignment);
+		aligned_allocation_size_buffer[25] = sunder_accumulate_aligned_allocation_size(aligned_shader_byte_code_allocation_size_buffer, LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT, initialization_data->arena_alignment); // shader_byte_code_combined
+		aligned_allocation_size_buffer[26] = sunder_compute_aligned_allocation_size(sizeof(VkQueueFamilyProperties), core->supported_queue_family_property_count, initialization_data->arena_alignment); // queue_family_properties
+		aligned_allocation_size_buffer[27] = sunder_compute_aligned_allocation_size(sizeof(VkSurfaceFormatKHR), core->supported_surface_format_count, initialization_data->arena_alignment); // supported_surface_formats
+		aligned_allocation_size_buffer[28] = sunder_compute_aligned_allocation_size(sizeof(VkPresentModeKHR), core->supported_swapchain_present_mode_count, initialization_data->arena_alignment); // supported_swapchain_present_modes
+		aligned_allocation_size_buffer[29] = sunder_compute_aligned_allocation_size(sizeof(lightray_vulkan_mesh_render_pass_data_t), core->total_mesh_count, initialization_data->arena_alignment); // mesh_render_pass_data_buffer
+		aligned_allocation_size_buffer[30] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_mesh_count, initialization_data->arena_alignment); // mesh_render_pass_data_mapping_buffer
+		aligned_allocation_size_buffer[31] = lightray_vulkan_compute_vram_arena_required_metadata_allocation_size(host_visible_vram_arena_allocation_count, initialization_data->arena_alignment); // host_visible_vram_arena_metadata
+		aligned_allocation_size_buffer[32] = lightray_vulkan_compute_vram_arena_required_metadata_allocation_size(device_local_vram_arena_allocation_count, initialization_data->arena_alignment); // device_local_vram_arena_metadata
+		aligned_allocation_size_buffer[33] = lightray_vulkan_compute_vram_arena_required_metadata_allocation_size(host_visible_storage_vram_arena_allocation_count, initialization_data->arena_alignment); // host_visible_storage_vram_arena_metadata
+		aligned_allocation_size_buffer[34] = total_string_byte_code_size;
+		aligned_allocation_size_buffer[35] = sunder_compute_aligned_allocation_size(sizeof(lightray_font_atlas_t), 1, initialization_data->arena_alignment); // font_atlas buffer
+		aligned_allocation_size_buffer[36] = sunder_compute_aligned_allocation_size(sizeof(lightray_glyph_t), 256, initialization_data->arena_alignment); // glyph buffer
+		aligned_allocation_size_buffer[37] = sunder_compute_aligned_allocation_size(sizeof(lightray_render_instance_glyph_t), 256, initialization_data->arena_alignment); // render instance glyph buffer
+		aligned_allocation_size_buffer[38] = sunder_compute_aligned_allocation_size(sizeof(lightray_vulkan_texture_t), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // texture buffer
+		aligned_allocation_size_buffer[39] = sunder_compute_aligned_allocation_size(sizeof(VkMemoryRequirements), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // vram requirements buffer
+		aligned_allocation_size_buffer[40] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // vram type index buffer
+		aligned_allocation_size_buffer[41] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_texture_count_including_depth_texture, initialization_data->arena_alignment); // vram type index filter buffer
+		aligned_allocation_size_buffer[42] = sunder_compute_aligned_allocation_size(sizeof(lightray_vulkan_texture_sampler_metadata_t), core->total_texture_count * 2, initialization_data->arena_alignment); // texture sampler metadata, filter buffers
+		aligned_allocation_size_buffer[43] = sunder_compute_aligned_allocation_size(sizeof(VkDescriptorSet), core->total_texture_count, initialization_data->arena_alignment); // descriptor sets
+		aligned_allocation_size_buffer[44] = sunder_compute_aligned_allocation_size(sizeof(VkDescriptorSetLayout), core->total_texture_count, initialization_data->arena_alignment); // copy descriptor set layouts
+		aligned_allocation_size_buffer[45] = sunder_compute_aligned_allocation_size(sizeof(VkDescriptorImageInfo), core->total_texture_count, initialization_data->arena_alignment); // combined image sampler info buffer
+		aligned_allocation_size_buffer[46] = sunder_compute_aligned_allocation_size(sizeof(u64), host_visible_vram_arena_allocation_count, initialization_data->arena_alignment); // host_visible_vram_arena_suballocation_starting_offsets 
+		aligned_allocation_size_buffer[47] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_mesh_count, initialization_data->arena_alignment); // mesh_render_pass_data_reordering_helper_buffer 
+		aligned_allocation_size_buffer[48] = sunder_compute_aligned_allocation_size(sizeof(lightray_overlay_text_element_t), core->overlay_core.total_text_element_count, initialization_data->arena_alignment); // overlay text element buffer
+		aligned_allocation_size_buffer[49] = sunder_compute_aligned_allocation_size(sizeof(u32), core->total_wireframe_present_mesh_index_count, initialization_data->arena_alignment);
 
 		SUNDER_LOG("\n\naligned_allocation_size_buffer: \n");
 		for (u32 i = 0; i < LIGHTRAY_VULKAN_ALIGNED_ALLOCATION_SIZE_BUFFER_LENGTH; i++)
@@ -513,7 +518,10 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 		const sunder_arena_suballocation_result_t node_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_node_t), core->animation_core.total_node_count), alignof(lightray_node_t));
 		core->animation_core.node_buffer = SUNDER_CAST(lightray_node_t*, node_buffer_suballocatinon_result.data);
 
-		const sunder_arena_suballocation_result_t animation_playback_command_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_animation_playback_command_t), initialization_data->animation_playback_command_count), alignof(lightray_animation_playback_command_t));
+		const sunder_arena_suballocation_result_t animation_playback_command_batch_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_animation_playback_command_batch_t), initialization_data->animation_playback_command_batch_count), alignof(lightray_animation_playback_command_batch_t));
+		core->animation_core.playback_command_batch_buffer = SUNDER_CAST(lightray_animation_playback_command_batch_t*, animation_playback_command_batch_buffer_suballocatinon_result.data);
+
+		const sunder_arena_suballocation_result_t animation_playback_command_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(lightray_animation_playback_command_t), animation_playback_command_count), alignof(lightray_animation_playback_command_t));
 		core->animation_core.playback_command_buffer = SUNDER_CAST(lightray_animation_playback_command_t*, animation_playback_command_buffer_suballocatinon_result.data);
 
 		const sunder_arena_suballocation_result_t computed_bone_matrix_buffer_suballocatinon_result = sunder_suballocate_from_arena_debug(&core->general_purpose_ram_arena, sunder_compute_array_size_in_bytes(sizeof(glm::mat4), core->animation_core.total_computed_bone_transform_matrix_buffer_bone_count), alignof(glm::mat4));
@@ -619,10 +627,10 @@ void lightray_vulkan_initialize_core(lightray_vulkan_core_t* core, const lightra
 	// log them - done
 	// load font atlas png - done
 	// suballocate gpu side render instance glyph subbuffer - done
-	// adjust the vertex inputs for overlay - pending
-	// write cpu side pen advancment and other shennenigans - pending
-	// write vertex, fragment shader for overlay - pending
-	// profit?? - pending
+	// adjust the vertex inputs for overlay - done
+	// write cpu side pen advancment and other shennenigans - done
+	// write vertex, fragment shader for overlay - done
+	// profit?? - done
 
 	core->overlay_core.font_atlas_buffer[0].em_size = SUNDER_CAST2(f32)cJSON_GetObjectItem(metrics, "emSize")->valuedouble;
 	core->overlay_core.font_atlas_buffer[0].base_line_height = cJSON_GetObjectItem(metrics, "lineHeight")->valuedouble;
@@ -3954,30 +3962,66 @@ void lightray_vulkan_set_animation_playback_scale(lightray_vulkan_core_t* core, 
 	core->animation_core.playback_command_buffer[playback_command_index].scale = scale;
 }
 
-u32 lightray_vulkan_push_animation_playback_command(lightray_vulkan_core_t* core, u32 animation_index, u32 skeleton_index, u32 instance_index, bool loop)
+u32 lightray_vulkan_push_animation_playback_command_batch(lightray_vulkan_core_t* core)
 {
-	const u32 index = core->animation_core.playback_command_count;
+	const u32 index = core->animation_core.current_playback_command_batch_count;
 
-	if (!(sunder_valid_index(index, core->animation_core.total_playback_command_count)))
+	if (!sunder_valid_index(index, core->animation_core.total_playback_command_batch_count))
 	{
 		return UINT32_MAX;
 	}
 
+	core->animation_core.playback_command_batch_buffer[index].command_buffer_offset = core->animation_core.animation_playback_command_per_command_batch_count * index;
+	core->animation_core.playback_command_batch_buffer[index].command_count = 0;
+	core->animation_core.playback_command_batch_buffer[index].a_index = UINT16_MAX;
+	core->animation_core.playback_command_batch_buffer[index].b_index = UINT16_MAX;
+	core->animation_core.current_playback_command_batch_count++;
 
-	if (loop)
+	return index;
+}
+
+u32 lightray_vulkan_push_animation_playback_command(lightray_vulkan_core_t* core, const lightray_animation_playback_command_push_data_t* push_data)
+{
+	const u32 current_command_buffer_offset = core->animation_core.playback_command_batch_buffer[push_data->playback_command_batch_index].command_buffer_offset;
+	const u32 current_command_count = core->animation_core.playback_command_batch_buffer[push_data->playback_command_batch_index].command_count;
+	const u32 index = current_command_buffer_offset + current_command_count;
+
+	if (!(sunder_valid_index(current_command_count, core->animation_core.animation_playback_command_per_command_batch_count)))
 	{
-		SUNDER_SET_BIT(core->animation_core.looped_playback_flags, index, 1ull);
+		return UINT32_MAX;
 	}
 
-	core->animation_core.playback_command_buffer[index].animation_index = animation_index;
-	core->animation_core.playback_command_buffer[index].skeletal_mesh_index = skeleton_index;
-	core->animation_core.playback_command_buffer[index].instance_index = instance_index;
+	if (SUNDER_IS_ANY_BIT_SET(push_data->flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_LOOP_BIT, 1))
+	{
+		SUNDER_SET_BIT(core->animation_core.playback_command_buffer[index].flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_LOOP_BIT, 1);
+	}
+
+	if (SUNDER_IS_ANY_BIT_SET(push_data->flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_CULL_PRIMARY_BIT, 1))
+	{
+		SUNDER_SET_BIT(core->animation_core.playback_command_buffer[index].flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_CULL_PRIMARY_BIT, 1);
+	}
+
+	if (SUNDER_IS_ANY_BIT_SET(push_data->flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_BURST_BIT, 1))
+	{
+		SUNDER_SET_BIT(core->animation_core.playback_command_buffer[index].flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_BURST_BIT, 1);
+	}
+
+	core->animation_core.playback_command_buffer[index].animation_index = push_data->animation_index;
+	core->animation_core.playback_command_buffer[index].skeletal_mesh_index = push_data->skeletal_mesh_index;
+	core->animation_core.playback_command_buffer[index].instance_index = push_data->instance_index;
 	core->animation_core.playback_command_buffer[index].scale = 1.0f;
 	core->animation_core.playback_command_buffer[index].time = 0;
 	core->animation_core.playback_command_buffer[index].ticks = 0;
+	core->animation_core.playback_command_buffer[index].blend = 0.0f;
+	core->animation_core.playback_command_buffer[index].blend_step = push_data->blend_step;
+	core->animation_core.playback_command_buffer[index].blend_mode = push_data->blend_mode;
+	core->animation_core.playback_command_buffer[index].first_segment_end_frame = push_data->first_segment_end_frame;
+	core->animation_core.playback_command_buffer[index].second_segment_start_frame = push_data->second_segment_start_frame;
 	core->animation_core.playback_command_count++;
 
-	return index;
+	core->animation_core.playback_command_batch_buffer[push_data->playback_command_batch_index].command_count++;
+
+	return current_command_count;
 }
 
 void lightray_vulkan_withdraw_animation_playback_command(lightray_vulkan_core_t* core, u32 playback_command_index)
@@ -4002,18 +4046,76 @@ void lightray_vulkan_flush_animation_playback_command_buffer(lightray_vulkan_cor
 	core->animation_core.playback_command_count = 0;
 }
 
-lightray_vulkan_result lightray_vulkan_play_animation(lightray_vulkan_core_t* core, u32 playback_command_index)
+lightray_vulkan_result lightray_vulkan_play_animation(lightray_vulkan_core_t* core, u32 playback_command_batch_index, u32 playback_command_index)
 {
-	if (SUNDER_IS_ANY_BIT_SET(core->animation_core.looped_playback_flags, playback_command_index, 1ull))
+	const u32 playback_command_global_index = core->animation_core.playback_command_batch_buffer[playback_command_batch_index].command_buffer_offset + playback_command_index;
+	const u16 a_index = core->animation_core.playback_command_batch_buffer[playback_command_batch_index].a_index;
+	const u16 b_index = core->animation_core.playback_command_batch_buffer[playback_command_batch_index].b_index;
+	const u8 flags = core->animation_core.playback_command_buffer[playback_command_global_index].flags;
+	const lightray_animation_blend_mode_e blend_mode = core->animation_core.playback_command_buffer[playback_command_global_index].blend_mode;
+	const b32 can_cull = SUNDER_IS_ANY_BIT_SET(flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_CULL_PRIMARY_BIT, 1);
+	const b32 burst_capable = SUNDER_IS_ANY_BIT_SET(flags, LIGHTRAY_ANIMATION_PLAYBACK_BITS_BURST_BIT, 1);
+
+	if (blend_mode == LIGHTRAY_ANIMATION_BLEND_MODE_NONE)
 	{
-		SUNDER_SET_BIT(core->animation_core.playback_flags, playback_command_index, 1ull);
+		if (playback_command_index == a_index && !burst_capable)
+		{
+			return LIGHTRAY_VULKAN_RESULT_SUCCESS;
+		}
+
+		if (playback_command_index == b_index && !burst_capable)
+		{
+			return LIGHTRAY_VULKAN_RESULT_SUCCESS;
+		}
+
+		if (a_index == UINT16_MAX || can_cull)
+		{
+			core->animation_core.playback_command_batch_buffer[playback_command_batch_index].a_index = playback_command_index;
+			core->animation_core.playback_command_buffer[playback_command_global_index].time = 0;
+			core->animation_core.playback_command_buffer[playback_command_global_index].ticks = 0;
+		}
 	}
-	
+
 	else
 	{
-		SUNDER_SET_BIT(core->animation_core.playback_flags, playback_command_index, 1ull);
-		core->animation_core.playback_command_buffer[playback_command_index].time = 0;
-		core->animation_core.playback_command_buffer[playback_command_index].ticks = 0;
+		if (playback_command_index == a_index && !burst_capable)
+		{
+			return LIGHTRAY_VULKAN_RESULT_SUCCESS;
+		}
+
+		if (playback_command_index == b_index && !burst_capable)
+		{
+			return LIGHTRAY_VULKAN_RESULT_SUCCESS;
+		}
+
+		if (a_index == UINT16_MAX || can_cull)
+		{
+			if (a_index == playback_command_index)
+			{
+				core->animation_core.playback_command_batch_buffer[playback_command_batch_index].a_index = playback_command_index;
+				core->animation_core.playback_command_buffer[playback_command_global_index].time = 0;
+				core->animation_core.playback_command_buffer[playback_command_global_index].ticks = 0;
+				core->animation_core.playback_command_buffer[playback_command_global_index].blend = 0.0f;
+
+				return LIGHTRAY_VULKAN_RESULT_SUCCESS;
+			}
+
+			core->animation_core.playback_command_batch_buffer[playback_command_batch_index].b_index = core->animation_core.playback_command_batch_buffer[playback_command_batch_index].a_index;
+			core->animation_core.playback_command_batch_buffer[playback_command_batch_index].a_index = playback_command_index;
+			core->animation_core.playback_command_buffer[playback_command_global_index].time = 0;
+			core->animation_core.playback_command_buffer[playback_command_global_index].ticks = 0;
+			core->animation_core.playback_command_buffer[playback_command_global_index].blend = 0.0f;
+
+			return LIGHTRAY_VULKAN_RESULT_SUCCESS;
+		}
+
+		else if (b_index == UINT16_MAX)
+		{
+			core->animation_core.playback_command_batch_buffer[playback_command_batch_index].b_index = playback_command_index;
+			//core->animation_core.playback_command_buffer[playback_command_global_index].time = 0;
+			//core->animation_core.playback_command_buffer[playback_command_global_index].ticks = 0;
+			//core->animation_core.playback_command_buffer[playback_command_global_index].blend = 0.0f;
+		}
 	}
 
 	return LIGHTRAY_VULKAN_RESULT_SUCCESS;
@@ -4146,7 +4248,7 @@ void lightray_vulkan_tick_core_begin(lightray_vulkan_core_t* core)
 
 void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_vulkan_core_tick_end_data_t* tick_data)
 {
-	
+	/*
 	for (u32 i = 0; i < core->animation_core.playback_command_count; i++)
 	{
 		if (SUNDER_IS_ANY_BIT_SET(core->animation_core.playback_flags, i, 1ull))
@@ -4195,10 +4297,140 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 			}
 		}
 	}
-	
+	*/
+
+	const u32 current_playback_command_batch_count = core->animation_core.current_playback_command_batch_count;
+
+	for (u32 cmdb = 0; cmdb < current_playback_command_batch_count; cmdb++)
+	{
+		const u32 command_buffer_offset = core->animation_core.playback_command_batch_buffer[cmdb].command_buffer_offset;
+		const u16 a_index = core->animation_core.playback_command_batch_buffer[cmdb].a_index;
+		const u16 b_index = core->animation_core.playback_command_batch_buffer[cmdb].b_index;
+
+		if (a_index == UINT16_MAX)
+		{
+			continue;
+		}
+
+		const u32 command_buffer_index_a = command_buffer_offset + a_index;
+		const lightray_animation_blend_mode_e blend_mode = core->animation_core.playback_command_buffer[command_buffer_index_a].blend_mode;
+		const u16 animation_index_a = core->animation_core.playback_command_buffer[command_buffer_index_a].animation_index;
+		const f32 animation_duration_a = core->animation_core.animation_buffer[animation_index_a].duration;
+		const f32 tickrate_a = core->animation_core.animation_buffer[animation_index_a].tickrate;
+		const f32 scale_a = core->animation_core.playback_command_buffer[command_buffer_index_a].scale;
+
+		const u32 command_buffer_index_b = command_buffer_offset + b_index;
+		
+		const u8 animation_frame_count = (u8)animation_duration_a;
+		const u8 second_segment_start_frame = core->animation_core.playback_command_buffer[command_buffer_index_a].second_segment_start_frame;
+		const u8 second_segment_frame_count = animation_frame_count - second_segment_start_frame;
+
+		if (blend_mode == LIGHTRAY_ANIMATION_BLEND_MODE_NONE)
+		{
+			lightray_advance_animation_playback_data(&core->animation_core, command_buffer_index_a, core->delta_time, LIGHTRAY_ANIMATION_PLAYBACK_DATA_ADVANCE_KIND_FULL);
+			const f32 ticks_a = core->animation_core.playback_command_buffer[command_buffer_index_a].ticks;
+
+			if (ticks_a >= animation_duration_a)
+			{
+				core->animation_core.playback_command_buffer[command_buffer_index_a].time = 0.0f;
+				core->animation_core.playback_command_buffer[command_buffer_index_a].ticks = 0.0f;
+
+				core->animation_core.playback_command_batch_buffer[cmdb].a_index = core->animation_core.playback_command_batch_buffer[cmdb].b_index;
+				core->animation_core.playback_command_batch_buffer[cmdb].b_index = UINT16_MAX;
+
+				lightray_compute_interpolated_skeleton_transform(&core->animation_core, command_buffer_index_a);
+			}
+
+			else
+			{
+				lightray_compute_interpolated_skeleton_transform(&core->animation_core, command_buffer_index_a);
+			}
+		}
+
+		else
+		{
+			if (blend_mode == LIGHTRAY_ANIMATION_BLEND_MODE_DEFAULT)
+			{
+				lightray_advance_animation_playback_data(&core->animation_core, command_buffer_index_a, core->delta_time, LIGHTRAY_ANIMATION_PLAYBACK_DATA_ADVANCE_KIND_LOOPED);
+
+				if (b_index == UINT16_MAX)
+				{
+					core->animation_core.playback_command_buffer[command_buffer_index_a].blend = 0.0f;
+					lightray_compute_interpolated_skeleton_transform(&core->animation_core, command_buffer_index_a);
+
+					continue;
+				}
+
+				lightray_advance_animation_playback_data(&core->animation_core, command_buffer_index_b, core->delta_time, LIGHTRAY_ANIMATION_PLAYBACK_DATA_ADVANCE_KIND_LOOPED);
+
+				const f32 blend_step = core->animation_core.playback_command_buffer[command_buffer_index_a].blend_step * core->delta_time;
+				const f32 blend = core->animation_core.playback_command_buffer[command_buffer_index_a].blend;
+				const f32 clamped_blend = sunder_clamp_f32(0.0f, 1.0f, blend);
+				core->animation_core.playback_command_buffer[command_buffer_index_a].blend += blend_step;
+
+				lightray_blend_skeleton_transform(&core->animation_core, command_buffer_index_a, command_buffer_index_b, clamped_blend);
+
+				if (clamped_blend == 1.0f)
+				{
+					core->animation_core.playback_command_buffer[command_buffer_index_a].blend = 0.0f;
+					core->animation_core.playback_command_buffer[command_buffer_index_b].blend = 0.0f;
+					core->animation_core.playback_command_batch_buffer[cmdb].a_index = b_index;
+					core->animation_core.playback_command_batch_buffer[cmdb].b_index = UINT16_MAX;
+				}
+			}
+
+			else if (blend_mode == LIGHTRAY_ANIMATION_BLEND_MODE_SINGLE_SEGMENTED_SECOND)
+			{
+				lightray_advance_animation_playback_data(&core->animation_core, command_buffer_index_a, core->delta_time, LIGHTRAY_ANIMATION_PLAYBACK_DATA_ADVANCE_KIND_LOOPED);
+				b32 should_blend = SUNDER_FALSE;
+				
+					if (b_index == UINT16_MAX)
+					{
+						core->animation_core.playback_command_buffer[command_buffer_index_a].blend = 0.0f;
+						lightray_compute_interpolated_skeleton_transform(&core->animation_core, command_buffer_index_a);
+
+						continue;
+					}
+
+					lightray_advance_animation_playback_data(&core->animation_core, command_buffer_index_b, core->delta_time, LIGHTRAY_ANIMATION_PLAYBACK_DATA_ADVANCE_KIND_LOOPED);
+
+					const u8 current_frame = SUNDER_CAST2(u8)core->animation_core.playback_command_buffer[command_buffer_index_a].ticks;
+					const u8 frame_difference = animation_frame_count - current_frame;
+					f32 frame_blend = 0.0f;
+
+					if (frame_difference <= second_segment_frame_count)
+					{
+						const u8 inverse_frame_index = second_segment_frame_count - frame_difference + 1;
+						frame_blend = (f32)inverse_frame_index / (second_segment_frame_count);
+						should_blend = SUNDER_TRUE;
+					}
+
+					f32 clamped_blend = 0.0f;
+
+					if (should_blend)
+					{
+						const f32 blend_step = (frame_blend + core->animation_core.playback_command_buffer[command_buffer_index_a].blend_step) * core->delta_time;
+						const f32 blend = frame_blend + core->animation_core.playback_command_buffer[command_buffer_index_a].blend;
+						clamped_blend = sunder_clamp_f32(0.0f, 1.0f, blend);
+						core->animation_core.playback_command_buffer[command_buffer_index_a].blend += blend_step;
+					}
+
+					lightray_blend_skeleton_transform(&core->animation_core, command_buffer_index_a, command_buffer_index_b, clamped_blend);
+
+					if (clamped_blend == 1.0f)
+					{
+						core->animation_core.playback_command_buffer[command_buffer_index_a].blend = 0.0f;
+						core->animation_core.playback_command_buffer[command_buffer_index_b].blend = 0.0f;
+						core->animation_core.playback_command_batch_buffer[cmdb].a_index = b_index;
+						core->animation_core.playback_command_batch_buffer[cmdb].b_index = UINT16_MAX;
+					}
+
+				//}
+			}
+		}
+	}
 
 	//////////////////////////////////
-	
 
 	i32 current_temp_buffer_offset = 0;
 
@@ -4620,7 +4852,7 @@ void lightray_vulkan_tick_core_end(lightray_vulkan_core_t* core, const lightray_
 				const sunder_quat_t extracted_rotation = sunder_extract_rotation_m4(uniform_scale_parent_transform);
 
 				parent_transform = sunder_m4_identity();
-				parent_transform = sunder_m4_translation(extracted_translation) * sunder_m4_rotation(sunder_quat_conjugate(extracted_rotation));
+				parent_transform = sunder_m4_translation(extracted_translation) * sunder_m4_rotation(extracted_rotation);
 			}
 
 			if (current_binding_chain_entity_camera_attribute != UINT16_MAX)
@@ -4964,13 +5196,14 @@ void lightray_vulkan_tick_core_defered(lightray_vulkan_core_t* core)
 	// update model matrices
 }
 
-b32 lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_raycast_data_t* data, u32* out_raycast_pierce_layer_test_data_count, u16* external_inverse_written_count, sunder_m4_t* external_inverse_buffer)
+lightray_raycast_result_t lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_raycast_data_t* data)
 {
-	return lightray_cast_ray(scene, data, out_raycast_pierce_layer_test_data_count, external_inverse_written_count, external_inverse_buffer, core->cpu_side_render_instance_buffer);
+	return lightray_cast_ray(scene, data, core->cpu_side_render_instance_buffer);
 }
 
 b32 lightray_vulkan_collision_attribute_collides_immediate(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale)
 {
+	/*
 	/////////////////////////////// step 1 ///////////////////////////////
 	const u32 aabb_index = scene->collision_attribute_buffer[collision_attribute_index].aabb_index;
 
@@ -5034,8 +5267,8 @@ b32 lightray_vulkan_collision_attribute_collides_immediate(const lightray_vulkan
 		}
 	}
 	/////////////////////////////// step 2 ///////////////////////////////
-
-
+	*/
+	/*
 	/////////////////////////////// step 3 ///////////////////////////////
 	const u32 post_grid_population_row_count = scene->collision_attribute_buffer[collision_attribute_index].row_count;
 	const u32 post_grid_population_width = scene->collision_attribute_buffer[collision_attribute_index].width_per_row;
@@ -5163,18 +5396,7 @@ b32 lightray_vulkan_collision_attribute_collides_immediate(const lightray_vulkan
 								}
 
 
-									/*
-									SUNDER_LOG("\n\nepa_result\n");
-									SUNDER_LOG("hit: ");
-									SUNDER_LOG(epa_result.hit);
-									SUNDER_LOG("\ndepth: ");
-									SUNDER_LOG(epa_result.depth);
-									SUNDER_LOG("\ncontact_point: ");
-									sunder_log_v3(epa_result.contact_point);
-									SUNDER_LOG("\nnormal: ");
-									sunder_log_v3(epa_result.normal);
-									*/
-
+									
 								SUNDER_SET_BUFFERED_BIT(scene->game_side_entity_kind_bitmask_buffer, (SUNDER_COMPUTE_BUFFERED_BIT_OFFSET(scene->collision_attribute_buffer[collision_attribute_index].game_side_entity_kind_bitmask_buffer_offset)) + scene->collision_attribute_buffer[current_other_collision_attribute_index].game_side_entity_kind);
 								SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLIDES_BIT, 1u);
 								SUNDER_SET_BIT(scene->collision_attribute_buffer[collision_attribute_index].flags, LIGHTRAY_COLLISION_ATTRIBUTE_BITS_COLLISION_MESHES_COLLIDE_BIT, 1u);
@@ -5196,11 +5418,14 @@ b32 lightray_vulkan_collision_attribute_collides_immediate(const lightray_vulkan
 		return SUNDER_TRUE;
 	}
 
+	*/
+
 	return SUNDER_FALSE;
 }
 
 void lightray_vulkan_collision_test0(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale, u32* grid_cell_index_buffer, u32* grid_cell_index_count)
 {
+	/*
 	const u32 aabb_index = scene->collision_attribute_buffer[collision_attribute_index].aabb_index;
 
 	// const sunder_m4_t new_collision_attribute_model = sunder_m4_model(position, rotation, scale);
@@ -5249,10 +5474,13 @@ void lightray_vulkan_collision_test0(const lightray_vulkan_core_t* core, lightra
 			grid->cell_buffer[current_cell_index].collision_attribute_index_count++;
 		}
 	}
+	*/
+
 }
 
 void lightray_vulkan_collision_test_reset(lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, u32* grid_cell_index_buffer, u32 grid_cell_index_count)
 {
+	/*
 	scene->collision_attribute_buffer[collision_attribute_index].row_count = 0;
 	scene->collision_attribute_buffer[collision_attribute_index].width_per_row = 0;
 	
@@ -5262,10 +5490,12 @@ void lightray_vulkan_collision_test_reset(lightray_scene_t* scene, lightray_grid
 		grid->cell_buffer[wanted_grid_cell_index].collision_attribute_index_count--;
 	}
 
-	for (u32 rcbt = 0; rcbt < scene->total_has_already_been_traced_bitmask_count; rcbt++)
-	{
-		scene->has_already_been_traced_bitmask_subarena[rcbt] = 0;
-	}
+
+
+	//for (u32 rcbt = 0; rcbt < scene->total_has_already_been_traced_bitmask_count; rcbt++)
+	//{
+		//scene->has_already_been_traced_bitmask_subarena[rcbt] = 0;
+	//}
 
 	const u32 collision_mesh_per_batch_count = scene->collision_mesh_batch_buffer[scene->collision_attribute_buffer[collision_attribute_index].collision_mesh_batch_index].collision_mesh_count;
 
@@ -5294,10 +5524,13 @@ void lightray_vulkan_collision_test_reset(lightray_scene_t* scene, lightray_grid
 	{
 		scene->game_side_entity_kind_bitmask_buffer[game_side_entity_kind_bitmask_buffer_offset + gmei] = 0;
 	}
+
+	*/
 }
 
 b32 lightray_vulkan_collision_test1(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale, u32 line_entity_index)
 {
+	/*
 	//const sunder_m4_t collision_attribute_entity_model = sunder_m4_model(position, rotation, scale);
 	const sunder_m4_t collision_attribute_entity_model = sunder_m4(scale.x, 0.0f, 0.0f, position.x,
 																										  0.0f, scale.y, 0.0f, position.y,
@@ -5447,12 +5680,15 @@ b32 lightray_vulkan_collision_test1(const lightray_vulkan_core_t* core, lightray
 		{
 			return SUNDER_TRUE;
 		}
+		*/
 
 	return SUNDER_FALSE;
 }
 
 sunder_v3_t lightray_vulkan_project_capsule_onto_plane(const lightray_vulkan_core_t* core, lightray_grid_t* grid, lightray_scene_t* scene, const sunder_v3_t& pre_raycast_capsule_position, u32 capsule_collision_mesh_batch_index, u32 capsule_collision_mesh_index, u32 cube_entity_index, u32 line_trace_entity_index)
 {
+	/*
+
 	const u32 capsule_global_collision_mesh_index = scene->collision_mesh_batch_buffer[capsule_collision_mesh_batch_index].collision_mesh_buffer_offset + capsule_collision_mesh_index;
 	const u32 sentinel_local_space_vertex_position_buffer_offset = scene->collision_mesh_buffer[capsule_global_collision_mesh_index].sentinel_local_space_vertex_position_buffer_offset;
 	const u32 capsule_sentinel_vertex_count = scene->collision_mesh_buffer[capsule_global_collision_mesh_index].sentinel_vertex_count;
@@ -5535,99 +5771,79 @@ sunder_v3_t lightray_vulkan_project_capsule_onto_plane(const lightray_vulkan_cor
 	u32 closest_ray_index = 0;
 	f32 closest_squared_distance = FLT_MAX;
 
-	
-	//u32 v_index = 0;
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[0];
-
 	cluster_origin_buffer[0] = capsule_sentinel_world_space_vertex_position_buffer[0];
 	cluster_origin_buffer[0].x -= LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
 	cluster_origin_buffer[0].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[1];
 	cluster_origin_buffer[1] = capsule_sentinel_world_space_vertex_position_buffer[1];
 	cluster_origin_buffer[1].y -= LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
 	cluster_origin_buffer[1].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[2];
 	cluster_origin_buffer[2] = capsule_sentinel_world_space_vertex_position_buffer[2];
 	cluster_origin_buffer[2].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[3];
 	cluster_origin_buffer[3] = capsule_sentinel_world_space_vertex_position_buffer[3];
 	cluster_origin_buffer[3].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[4];
 	cluster_origin_buffer[4] = capsule_sentinel_world_space_vertex_position_buffer[4];
 	cluster_origin_buffer[4].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[5];
 	cluster_origin_buffer[5] = capsule_sentinel_world_space_vertex_position_buffer[5];
 	cluster_origin_buffer[5].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[6];
 	cluster_origin_buffer[6] = capsule_sentinel_world_space_vertex_position_buffer[6];
 	cluster_origin_buffer[6].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[7];
 	cluster_origin_buffer[7] = capsule_sentinel_world_space_vertex_position_buffer[7];
 	cluster_origin_buffer[7].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[8];
 	cluster_origin_buffer[8] = capsule_sentinel_world_space_vertex_position_buffer[8];
 	cluster_origin_buffer[8].x -= LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
 	cluster_origin_buffer[8].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[9];
 	cluster_origin_buffer[9] = capsule_sentinel_world_space_vertex_position_buffer[9];
 	cluster_origin_buffer[9].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[10];
 	cluster_origin_buffer[10] = capsule_sentinel_world_space_vertex_position_buffer[10];
 	cluster_origin_buffer[10].y += LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
 	cluster_origin_buffer[10].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[11];
 	cluster_origin_buffer[11] = capsule_sentinel_world_space_vertex_position_buffer[11];
 	cluster_origin_buffer[11].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[12];
 	cluster_origin_buffer[12] = capsule_sentinel_world_space_vertex_position_buffer[12];
 	cluster_origin_buffer[12].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[13];
 	cluster_origin_buffer[13] = capsule_sentinel_world_space_vertex_position_buffer[13];
 	cluster_origin_buffer[13].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[14];
 	cluster_origin_buffer[14] = capsule_sentinel_world_space_vertex_position_buffer[14];
 	cluster_origin_buffer[14].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[15];
 	cluster_origin_buffer[15] = capsule_sentinel_world_space_vertex_position_buffer[15];
 	cluster_origin_buffer[15].x += LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
 	cluster_origin_buffer[15].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[16];
 	cluster_origin_buffer[16] = capsule_sentinel_world_space_vertex_position_buffer[16];
 	cluster_origin_buffer[16].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[17];
 	cluster_origin_buffer[17] = capsule_sentinel_world_space_vertex_position_buffer[17];
 	cluster_origin_buffer[17].x += LIGHTRAY_CAPSULE_BEYOND_LOWER_CLIPPING_PLANE_VERTEX_PLACEMENT_EPSILON;
 	cluster_origin_buffer[17].z += 2.0f;
 
-	//v_index = scene->capsule_beyond_lower_clipping_plane_sentinel_index_buffer[18];
 	cluster_origin_buffer[18] = capsule_sentinel_world_space_vertex_position_buffer[18];
 	cluster_origin_buffer[18].z += 2.0f;
 
+	//const sunder_v3_t capsule_ray_direction = sunder_normalize_v3(sunder_v3_v4(external_inverse_buffer[1] * sunder_v4_v3(sunder_v3(0.0f, 0.0f, -1.0f), 0.0f)));
+	//const sunder_v3_t plane_ray_direction = sunder_normalize_v3(sunder_v3_v4(external_inverse_buffer[0] * sunder_v4_v3(sunder_v3(0.0f, 0.0f, -1.0f), 0.0f)));
+	const sunder_v3_t capsule_ray_direction = sunder_transform_direction_to_ray_space_v3(sunder_v3(0.0f, 0.0f, -1.0f), external_inverse_buffer[1]);
+	const sunder_v3_t plane_ray_direction = sunder_transform_direction_to_ray_space_v3(sunder_v3(0.0f, 0.0f, -1.0f), external_inverse_buffer[0]);
 
-	const sunder_v3_t capsule_ray_direction = sunder_normalize_v3(sunder_v3_v4(external_inverse_buffer[1] * sunder_v4_v3(sunder_v3(0.0f, 0.0f, -1.0f), 0.0f)));
-	const sunder_v3_t plane_ray_direction = sunder_normalize_v3(sunder_v3_v4(external_inverse_buffer[0] * sunder_v4_v3(sunder_v3(0.0f, 0.0f, -1.0f), 0.0f)));
-	
 	for (u32 r = 0; r < 19; r++)
 	{
 		lightray_ray_t capsule_ray{};
-		capsule_ray.origin = sunder_v3_v4(external_inverse_buffer[1] * sunder_v4_v3(cluster_origin_buffer[r], 1.0f));
+		//capsule_ray.origin = sunder_v3_v4(external_inverse_buffer[1] * sunder_v4_v3(cluster_origin_buffer[r], 1.0f));
+		capsule_ray.origin = sunder_transform_position_to_ray_space_v3(cluster_origin_buffer[r], external_inverse_buffer[1]);
 		capsule_ray.direction = capsule_ray_direction;
 		capsule_ray.distance = 100.0f;
 
@@ -5669,7 +5885,8 @@ sunder_v3_t lightray_vulkan_project_capsule_onto_plane(const lightray_vulkan_cor
 		}
 
 		lightray_ray_t plane_ray{};
-		plane_ray.origin = sunder_v3_v4(external_inverse_buffer[0] * sunder_v4_v3(cluster_origin_buffer[r], 1.0f));
+		//plane_ray.origin = sunder_v3_v4(external_inverse_buffer[0] * sunder_v4_v3(cluster_origin_buffer[r], 1.0f));
+		plane_ray.origin = sunder_transform_position_to_ray_space_v3(cluster_origin_buffer[r], external_inverse_buffer[0]);
 		plane_ray.direction = plane_ray_direction;
 		plane_ray.distance = 100.0f;
 
@@ -5758,9 +5975,9 @@ sunder_v3_t lightray_vulkan_project_capsule_onto_plane(const lightray_vulkan_cor
 	}
 
 	return capsule_projected_position;
+	*/
 
-
-
+return sunder_v3_scalar(0.0f);
 
 
 
