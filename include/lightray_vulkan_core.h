@@ -49,7 +49,7 @@
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_INDEX 2048u
 #define LIGHTRAY_VULKAN_INVALID_TEXTURE_LAYER_INDEX 256
 #define LIGHTRAY_VULKAN_MANDATORY_SHADER_COUNT 8u
-#define LIGHTRAY_VULKAN_ALIGNED_ALLOCATION_SIZE_BUFFER_LENGTH 49u
+#define LIGHTRAY_VULKAN_ALIGNED_ALLOCATION_SIZE_BUFFER_LENGTH 50u
 #define LIGHTRAY_VULKAN_INVALUD_BATCH_INDEX 6144u
 
 SUNDER_DEFINE_BUFFER_INDEX_QUERY_RESULT_STRUCTURE(VkFilter, lightray_vulkan, vk_filter, u32)
@@ -325,7 +325,8 @@ struct lightray_vulkan_core_initialization_data_t
 	u32 skeletal_mesh_count = 0; 
 	u32 texture_count = 0;
 	u32 camera_count = 0;
-	u32 animation_playback_command_count = 0;
+	u32 animation_playback_command_batch_count = 0;
+	u32 animation_playback_command_per_command_batch_count = 0;
 	u32 msdf_font_atlas_count = 0;
 };
 
@@ -625,11 +626,12 @@ void																				lightray_vulkan_render_static_overlay_layers();
 f32																				lightray_vulkan_normalize_width_f32(const lightray_vulkan_core_t* core, f32 pixels);
 f32																				lightray_vulkan_normalize_height_f32(const lightray_vulkan_core_t* core, f32 pixels);
 
-u32																				lightray_vulkan_push_animation_playback_command(lightray_vulkan_core_t* core, u32 animation_index, u32 skeleton_index, u32 instance_index, bool loop);
+u32																				lightray_vulkan_push_animation_playback_command_batch(lightray_vulkan_core_t* core);
+u32																				lightray_vulkan_push_animation_playback_command(lightray_vulkan_core_t* core, const lightray_animation_playback_command_push_data_t* push_data);
 void																				lightray_vulkan_withdraw_animation_playback_command(lightray_vulkan_core_t* core, u32 playback_command_index);
 void																				lightray_vulkan_flush_animation_playback_command_buffer(lightray_vulkan_core_t* core);
 void																				lightray_vulkan_set_animation_playback_scale(lightray_vulkan_core_t* core, u32 playback_command_index, f32 scale);
-lightray_vulkan_result													lightray_vulkan_play_animation(lightray_vulkan_core_t* core, u32 playback_command_index);
+lightray_vulkan_result													lightray_vulkan_play_animation(lightray_vulkan_core_t* core, u32 playback_command_batch_index, u32 playback_command_index);
 void																				lightray_vulkan_apply_bind_pose(lightray_vulkan_core_t* core, u32 skeleton_index, u32 instance_index);
 
 
@@ -638,7 +640,7 @@ u32																				lightray_vulkan_get_reordered_global_mesh_index(const lig
 																					// returns a structure with runtime, setup time indices for access
 lightray_vulkan_runtime_asset_loading_result_t			lightray_vulkan_load_asset_runtime(lightray_vulkan_core_t* core, const lightray_vulkan_runtime_asset_loading_data_t* loading_data);
 
-b32																				lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_raycast_data_t* data, u32* out_raycast_pierce_layer_test_data_count, u16* external_inverse_written_count, sunder_m4_t* external_inverse_buffer);
+lightray_raycast_result_t												lightray_vulkan_cast_ray(const lightray_vulkan_core_t* core, lightray_scene_t* scene, const lightray_raycast_data_t* data);
 
 void																				lightray_vulkan_collision_test0(const lightray_vulkan_core_t* core, lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, const sunder_v3_t& position, const sunder_quat_t& rotation, const sunder_v3_t& scale, u32* grid_cell_index_buffer, u32* grid_cell_index_count);
 void																				lightray_vulkan_collision_test_reset(lightray_scene_t* scene, lightray_grid_t* grid, u32 collision_attribute_index, u32* grid_cell_index_buffer, u32 grid_cell_index_count);
